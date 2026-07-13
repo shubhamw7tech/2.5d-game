@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solo Leveling: Shadow Monarch Baseline</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; touch-action: none; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #00ffff; font-family: 'Courier New', monospace; text-shadow: 0 0 10px #00aaff; z-index: 10; transition: color 0.5s; }
+        #joystick-zone { position: absolute; bottom: 50px; left: 30px; width: 120px; height: 120px; z-index: 20; touch-action: none; }
+        
+        .btn { position: absolute; width: 75px; height: 75px; background: rgba(0, 255, 255, 0.1); border: 2px solid #00ffff; border-radius: 50%; color: #00ffff; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 30; user-select: none; box-shadow: 0 0 15px rgba(0, 255, 255, 0.2); font-size: 12px; touch-action: none; }
+        #attack-btn { bottom: 140px; right: 40px; }
+        #jump-btn { bottom: 50px; right: 100px; border-color: #ffffff; color: #ffffff; }
+        
+        .status-container { position: absolute; top: 95px; left: 20px; z-index: 10; width: 150px; }
+        
+        #timer-display { position: absolute; top: 20px; right: 20px; color: #ffffff; font-family: 'Courier New', monospace; font-size: 24px; text-shadow: 0 0 10px #ff0000; z-index: 10; }
+        
+        .bar-bg { width: 100%; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #444; margin-bottom: 5px; border-radius: 4px; overflow: hidden; }
+        #hp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #00ff00,  #008800); transition: width 0.3s; }
+        #mp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #00aaff, #0044ff); transition: width 0.3s; }
+        
+        #death-screen { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 0, 0, 0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(8px); border: 4px solid rgba(255, 0, 0, 0.2); box-sizing: border-box; }
+        #death-screen h1 { color: #ff0000; font-family: 'serif', 'Courier New'; font-size: 32px; letter-spacing: 5px; text-transform: uppercase; margin: 0; text-shadow: 0 0 20px #ff0000, 0 0 40px #770000; animation: pulse 2s infinite; }
+        #death-screen p { color: #888; font-family: monospace; margin-bottom: 30px; font-size: 14px; }
+        #respawn-btn { padding: 12px 40px; background: #000; border: 1px solid #ff0000; color: #ff0000; font-family: monospace; font-weight: bold; cursor: pointer; box-shadow: 0 0 15px rgba(255, 0, 0, 0.4); transition: 0.3s; }
+        #respawn-btn:active { background: #ff0000; color: #000; }
+
+        #boss-banner { display: none; position: absolute; top: 40%; left: 0; width: 100%; text-align: center; color: #ffffff; font-family: 'serif'; font-size: 40px; text-shadow: 0 0 30px #ff0000, 0 0 10px #ff0000; z-index: 50; background: rgba(50, 0, 0, 0.7); padding: 20px 0; letter-spacing: 15px; border-top: 2px solid #ff0000; border-bottom: 2px solid #ff0000; animation: pulse 1s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.02); }
+            100% { opacity: 0.8; transform: scale(1); }
+        }
+        
+        #skip-btn { position: absolute; top: 20px; left: 180px; padding: 8px 15px; background: rgba(50, 50, 50, 0.8); border: 2px solid #ffff00; color: #ffff00; font-family: 'Courier New', monospace; font-weight: bold; z-index: 100; cursor: pointer; border-radius: 5px; touch-action: none; }
+        #skip-btn:active { background: #ffff00; color: #000; }
+        
+        #fullscreen-btn { position: absolute; top: 20px; right: 120px; padding: 8px 15px; background: rgba(0, 0, 0, 0.8); border: 2px solid #00ff00; color: #00ff00; font-family: 'Courier New', monospace; font-weight: bold; z-index: 100; cursor: pointer; border-radius: 5px; touch-action: none; }
+        #fullscreen-btn:active { background: #00ff00; color: #000; }                       
+    </style>
+</head>
+<body>
+    <div id="ui">LEVEL: 1<br>STATUS: S_RANK_VIVID<br><span id="kill-count">GOBLINS: 0/10</span></div>
+    <div class="status-container">
+        <div class="bar-bg"><div id="hp-bar"></div></div>
+        <div class="bar-bg"><div id="mp-bar"></div></div>
+        <div id="dev-coords" style="position: absolute; top: 10px; right: 10px; background: rgba(0, 0, 0, 0.8); color: #00ff00; padding: 5px 10px; font-family: monospace; font-size: 12px; border: 1px solid #00ff00; border-radius: 5px; z-index: 9999; pointer-events: none;">
+            X: 0.0 | Y: 0.0 | Z: 0.0
+        </div>        
+    </div>
+    
+    <button id="skip-btn" onclick="devSkipLevel()">[ DEV: SKIP ]</button>        
+    <button id="fullscreen-btn" onclick="toggleFullscreen()">[ FULLSCREEN ]</button>            
+    
+    <div id="boss-banner">BOSS FIGHT</div>
+
+    <div id="death-screen">
+        <p>[ WARNING ]</p>
+        <h1 id="death-title">YOU HAVE DIED</h1>
+        <p id="death-msg" style="margin-top: 10px;">The penalty quest will now begin.</p>
+        <button id="respawn-btn" onclick="respawn()">RE-ENTER DUNGEON</button>
+    </div>
+
+    <div id="joystick-zone"></div>
+    <div id="timer-display">01:00</div>  
+    <div id="attack-btn" class="btn">STRIKE</div>
+    <div id="jump-btn" class="btn">JUMP</div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.163.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.163.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+ 
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 5000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.CineonToneMapping; 
+        renderer.toneMappingExposure = 1.2; 
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+        sun.position.set(5, 20, 10);
+        scene.add(sun);
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });               
+
+        // --- DUNGEON LOADER ---
+        let collidableObjects = [];
+        let dynamicCrystals = [];       
+        let allDungeon1Colliders = []; 
+        let dungeon1, dungeon2;
+        const floorRay = new THREE.Raycaster();
+        const wallRay = new THREE.Raycaster(); 
+        const SPAWN = { x: 0, y: 15, z: -70 }; 
+        const loader = new GLTFLoader();
+
+        loader.load('scene.gltf', (gltf) => {
+            dungeon1 = gltf.scene;
+            dungeon1.scale.set(25, 25, 25);
+            dungeon1.position.set(0, -15, -60);
+            dungeon1.traverse(child => { 
+                if (child.isMesh) {
+                    collidableObjects.push(child); 
+                    allDungeon1Colliders.push(child);
+                }
+            });
+            scene.add(dungeon1);
+        });                              
+
+        // --- PLAYER (DYNAMIC MULTI-TEXTURE) ---
+        const jinwooTex = new THREE.TextureLoader().load('jinwoo_fixed.png');
+        jinwooTex.magFilter = jinwooTex.minFilter = THREE.NearestFilter; 
+        jinwooTex.colorSpace = THREE.SRGBColorSpace; 
+        jinwooTex.repeat.set(1/3, 1/2); 
+        
+        const jinwooNewTex = new THREE.TextureLoader().load('jinwoo_new.png');
+        // Changed LinearFilter to NearestFilter to stop blurring
+        jinwooNewTex.magFilter = jinwooNewTex.minFilter = THREE.NearestFilter; 
+        jinwooNewTex.colorSpace = THREE.SRGBColorSpace; 
+        jinwooNewTex.repeat.set(1/3, 1/3); 
+        
+        let jinwooCols = 3;  
+        let jinwooRows = 2;
+        
+        // Changed from MeshToonMaterial to MeshBasicMaterial (ignores sun fading)
+        // Completely removed the complex shader filter injection
+        const playerMat = new THREE.MeshBasicMaterial({ 
+            map: jinwooTex, 
+            transparent: true, 
+            alphaTest: 0.4, 
+            side: THREE.DoubleSide 
+        });
+        
+        const player = new THREE.Mesh(new THREE.PlaneGeometry(7, 8), playerMat);
+        player.position.set(SPAWN.x, SPAWN.y, SPAWN.z);
+        scene.add(player);
+
+        // --- GOBLIN SETUP ---
+        const gobTex = new THREE.TextureLoader().load('goblin.png'); 
+        gobTex.magFilter = THREE.NearestFilter; 
+        gobTex.repeat.set(1/3, 1/2);
+        const gobMat = new THREE.MeshToonMaterial({ map: gobTex, transparent: true, alphaTest: 0.6, side: THREE.DoubleSide });
+        gobMat.onBeforeCompile = (shader) => {
+            shader.fragmentShader = shader.fragmentShader.replace(`#include <map_fragment>`, `
+                #include <map_fragment>
+                diffuseColor.rgb = (diffuseColor.rgb - 0.5) * 1.3 + 0.5;
+                float luminance = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+                diffuseColor.rgb = mix(vec3(luminance), diffuseColor.rgb, 1.4);
+            `);
+        };
+        const goblin = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), gobMat);
+        scene.add(goblin);
+
+        const hpGroup = new THREE.Group();
+        hpGroup.position.y = 4.5;
+        goblin.add(hpGroup);
+        const hpBg = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.4), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 }));
+        hpGroup.add(hpBg);
+        const hpGreen = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.4), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        hpGreen.position.z = 0.01;
+        hpGroup.add(hpGreen);
+        
+        // --- BOSS SETUP (WHITE WOLF) ---
+        const wolfTex = new THREE.TextureLoader().load('lvl5boss_v2.png'); 
+        wolfTex.magFilter = THREE.NearestFilter; 
+        wolfTex.repeat.set(1/3, 1/2); 
+        const wolfMat = new THREE.MeshToonMaterial({ map: wolfTex, transparent: true, alphaTest: 0.6, side: THREE.DoubleSide });
+        const wolf = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), wolfMat); 
+        scene.add(wolf);
+        wolf.visible = false; 
+
+        const wHpGroup = new THREE.Group();
+        wHpGroup.position.y = 6.5; 
+        wolf.add(wHpGroup);
+        const wHpBg = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.6), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+        wHpGroup.add(wHpBg);
+        const wHpRed = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.6), new THREE.MeshBasicMaterial({ color: 0xaa00ff, side: THREE.DoubleSide }));                              
+        wHpRed.position.z = 0.01;
+        wHpGroup.add(wHpRed);
+        
+        // --- PROCEDURAL CITY SETUP (LEVELS 6-10) ---
+        const cityScene = new THREE.Group();
+        scene.add(cityScene);
+        cityScene.visible = false; 
+
+        let cityColliders = []; 
+
+        // 1. THE DARK ASPHALT (No canvas needed, just a solid color)
+        const roadMat = new THREE.MeshStandardMaterial({ 
+            color: 0x111115,  // Deep, dark night asphalt
+            roughness: 0.8,           
+            metalness: 0.1 
+        });
+        
+        const cityRoad = new THREE.Mesh(new THREE.PlaneGeometry(400, 600), roadMat); 
+        cityRoad.rotation.x = -Math.PI / 2;
+        cityScene.add(cityRoad);
+        cityColliders.push(cityRoad);
+
+        // 2. THE PHYSICAL YELLOW DASHES (Straight from your prototype!)
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xe5c100 }); // Neon Cyberpunk Yellow
+        for(let i = -250; i < 250; i += 40) {
+            const line = new THREE.Mesh(new THREE.PlaneGeometry(3, 15), lineMat);
+            line.rotation.x = -Math.PI / 2;
+            line.position.set(0, 0.2, i); // Slightly hovering above the road so it doesn't glitch
+            cityScene.add(line);
+        }
+        
+        // 3. PURPLE NEON GATE LIGHT (Turned up very high to cast a massive glow)
+        const gateLight = new THREE.PointLight(0xaa00ff, 8000, 300); 
+        gateLight.position.set(0, 25, -200); 
+        cityScene.add(gateLight);
+
+        // ... (The rest of your window and building generation stays exactly the same)
+        const canvas = document.createElement('canvas');                
+        
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#1a1a24'; ctx.fillRect(0, 0, 128, 128);
+        for(let x = 8; x < 128; x += 24) {
+            for(let y = 8; y < 128; y += 32) {
+                if (Math.random() > 0.6) {
+                    ctx.fillStyle = '#ffeeaa'; ctx.shadowBlur = 10; ctx.shadowColor = '#ffaa00';
+                } else {
+                    ctx.fillStyle = '#05050a'; ctx.shadowBlur = 0;
+                }
+                ctx.fillRect(x, y, 16, 20);
+            }
+        }
+        const cityWindowTexture = new THREE.CanvasTexture(canvas);
+        cityWindowTexture.wrapS = THREE.RepeatWrapping; cityWindowTexture.wrapT = THREE.RepeatWrapping;
+        const cityBuildingMat = new THREE.MeshStandardMaterial({ map: cityWindowTexture, roughness: 0.6, metalness: 0.4 });
+
+        const cityBuildingGeo = new THREE.BoxGeometry(1, 1, 1);
+                 
+        for (let i = 0; i < 50; i++) {
+            const w = 25 + Math.random() * 20, h = 60 + Math.random() * 120, d = 25 + Math.random() * 20;
+            const individualMat = cityBuildingMat.clone();
+            individualMat.map = cityWindowTexture.clone();
+            individualMat.map.repeat.set(w / 40, h / 40);
+
+            const building = new THREE.Mesh(cityBuildingGeo, individualMat);
+            building.scale.set(w, h, d);
+            const isLeft = i % 2 === 0;
+            building.position.set(isLeft ? -50 - Math.random() * 30 : 50 + Math.random() * 30, h / 2, 80 - (i * 10));
+            
+            cityScene.add(building);
+            cityColliders.push(building);
+        }
+
+        const mainGateGroup = new THREE.Group();
+        mainGateGroup.position.set(0, 30, -220);
+        cityScene.add(mainGateGroup);
+        const mainGateOuter = new THREE.Mesh(new THREE.TorusGeometry(25, 3, 16, 100), new THREE.MeshBasicMaterial({ color: 0xaa00ff, transparent: true, opacity: 0.9 }));
+        mainGateGroup.add(mainGateOuter);
+        const mainGateInner = new THREE.Mesh(new THREE.CircleGeometry(24, 32), new THREE.MeshBasicMaterial({ color: 0x110022 }));
+        mainGateGroup.add(mainGateInner);
+                
+        // --- ORC SETUP (DUAL SPAWN) ---
+        const orcTex = new THREE.TextureLoader().load('orc.png'); 
+        orcTex.magFilter = THREE.NearestFilter; 
+        orcTex.repeat.set(1/3, 1/3); // FIX: 3 Columns, 3 Rows 
+
+        const orcMat = new THREE.MeshToonMaterial({ map: orcTex, transparent: true, alphaTest: 0.6, side: THREE.DoubleSide });
+        
+        const orc1 = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), orcMat); 
+        scene.add(orc1);
+        orc1.visible = false; 
+        const orc1HpGroup = new THREE.Group(); orc1HpGroup.position.y = 5.5; orc1.add(orc1HpGroup);
+        orc1HpGroup.add(new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5, side: THREE.DoubleSide })));
+        const orc1HpRed = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide }));
+        orc1HpRed.position.z = 0.01; orc1HpGroup.add(orc1HpRed);
+
+        const orc2 = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), orcMat);
+        scene.add(orc2);
+        orc2.visible = false;
+        const orc2HpGroup = new THREE.Group(); orc2HpGroup.position.y = 5.5; orc2.add(orc2HpGroup);
+        orc2HpGroup.add(new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5, side: THREE.DoubleSide })));
+        const orc2HpRed = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide }));
+        orc2HpRed.position.z = 0.01; orc2HpGroup.add(orc2HpRed);
+  
+        // --- STATE, WAVE, & LEVEL LOGIC ---
+        let gobHp = 100, isGoblinDead = false, gobAnimTimer = 0;
+        let isBossPhase = false, isWolfDead = true, wolfHp = 500, wolfAnimTimer = 0, wolfVelocityY = 0;
+        
+        let isCityPhase = false; 
+        let orc1Hp = 150, isOrc1Dead = true, orc1VelocityY = 0;
+        let orc2Hp = 150, isOrc2Dead = true, orc2VelocityY = 0;
+        let orcAnimTimer = 0;
+        let isWaveSpawning = false; 
+        
+        let killCount = 0;
+        let currentLevel = 1;
+        let MAX_KILLS = 10;
+        let wolfAttackTimer = 0;
+        let isWolfAttackingState = true; 
+        
+        const levelData = [
+            { time: 60, gobs: 10 },   
+            { time: 60, gobs: 10 },   
+            { time: 120, gobs: 20 },  
+            { time: 120, gobs: 20 },  
+            { time: 180, gobs: 15 },  
+            { time: 180, gobs: 24 },  
+            { time: 240, gobs: 30 },  
+            { time: 300, gobs: 30 },  
+            { time: 300, gobs: 36 }   
+        ];
+
+        let moveData = { x: 0, y: 0 }, velocityY = 0, gobVelocityY = 0;
+        let isJumping = false, isAttacking = false, attackFrame = 0, walkTimer = 0;
+        let hp = 100, mp = 300, maxMp = 300, timeLeft = 60, timerActive = true;
+        const gravity = -0.025, jumpForce = 0.65;                 
+        
+        // --- AUDIO SYSTEM ---
+        const walkSFX = new Audio('walk.mp3');
+        walkSFX.loop = true; walkSFX.volume = 0.5; 
+        
+const cityWalkSFX = new Audio('city_walk.mp3');
+        cityWalkSFX.loop = true; cityWalkSFX.volume = 0.5;
+        
+        let currentWalkSFX = walkSFX;
+                
+        const slashSFX = new Audio('slash.mp3');
+        slashSFX.volume = 0.8;
+        const goblinHitSFX = new Audio('goblin_hit.mp3');
+        goblinHitSFX.volume = 1.0;
+        const goblinKillSFX = new Audio('goblin_kill.mp3');
+        goblinKillSFX.volume = 0.8;
+        // --- NEW: ORC AUDIO ---
+        const orcKillSFX = new Audio('orc_killed.mp3');
+        orcKillSFX.volume = 0.8;
+        const orcWalkSFX = new Audio('orc_walk.mp3');
+        orcWalkSFX.loop = true; 
+        orcWalkSFX.volume = 0.6;
+        // ---------------------- 
+                
+        const wolfWalkSFX = new Audio('wolf_walk.mp3');
+        wolfWalkSFX.loop = true; wolfWalkSFX.volume = 0.7;
+        const wolfAttackSFX = new Audio('wolf_attack.mp3');
+        wolfAttackSFX.volume = 1.0; 
+
+        nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '80px', bottom: '80px' } })
+            .on('move', (e, d) => { if(hp > 0) moveData = d.vector; })
+            .on('end', () => moveData = { x: 0, y: 0 });
+
+        // --- STRIKE LOGIC ---
+        document.getElementById('attack-btn').addEventListener('touchstart', (e) => { 
+            e.preventDefault(); 
+            if(!isAttacking && mp >= 10 && hp > 0) { 
+                isAttacking = true; attackFrame = 0; mp -= 10; 
+                document.getElementById('mp-bar').style.width = (mp / maxMp * 100) + "%";
+
+                slashSFX.currentTime = 0;
+                slashSFX.play().catch(e=>{});
+
+                if (!isBossPhase && !isCityPhase) {
+                    const distToGob = player.position.distanceTo(goblin.position);
+                    if(distToGob < 12 && !isGoblinDead) {
+                        gobHp -= 34;
+                        if(typeof goblinHitSFX !== 'undefined') { goblinHitSFX.currentTime = 0; goblinHitSFX.play().catch(e=>{}); }
+                        hpGreen.scale.x = Math.max(0, gobHp / 100);
+                        hpGreen.position.x = - (2 * (1 - hpGreen.scale.x)); 
+                        gobMat.emissive.setHex(0xffffff);
+                        setTimeout(() => gobMat.emissive.setHex(0x000000), 100);
+                    }
+                } else if (isCityPhase) {
+                    if(player.position.distanceTo(orc1.position) < 15 && !isOrc1Dead) {
+                        orc1Hp -= 34; 
+                        if(typeof goblinHitSFX !== 'undefined') { goblinHitSFX.currentTime = 0; goblinHitSFX.play().catch(e=>{}); }
+                        orc1HpRed.scale.x = Math.max(0, orc1Hp / 150);
+                        orc1HpRed.position.x = - (2.5 * (1 - orc1HpRed.scale.x)); 
+                        orc1.material.emissive.setHex(0xffffff);
+                        setTimeout(() => orc1.material.emissive.setHex(0x000000), 100);
+                    }
+                    if(player.position.distanceTo(orc2.position) < 15 && !isOrc2Dead) {
+                        orc2Hp -= 34;
+                        if(typeof goblinHitSFX !== 'undefined') { goblinHitSFX.currentTime = 0; goblinHitSFX.play().catch(e=>{}); }
+                        orc2HpRed.scale.x = Math.max(0, orc2Hp / 150);
+                        orc2HpRed.position.x = - (2.5 * (1 - orc2HpRed.scale.x)); 
+                        orc2.material.emissive.setHex(0xffffff);
+                        setTimeout(() => orc2.material.emissive.setHex(0x000000), 100);
+                    }
+                } else {
+                    const distToWolf = player.position.distanceTo(wolf.position);
+                    if(distToWolf < 18 && !isWolfDead) { 
+                        wolfHp -= 25; 
+                        if(typeof goblinHitSFX !== 'undefined') { goblinHitSFX.currentTime = 0; goblinHitSFX.play().catch(e=>{}); }
+                        wHpRed.scale.x = Math.max(0, wolfHp / 500);
+                        wHpRed.position.x = - (3 * (1 - wHpRed.scale.x)); 
+                        wolfMat.emissive.setHex(0xff0000); 
+                        setTimeout(() => wolfMat.emissive.setHex(0x000000), 100);
+                    }
+                }
+            } 
+        }, { passive: false });              
+
+        document.getElementById('jump-btn').addEventListener('touchstart', (e) => { 
+            e.preventDefault(); 
+            if(!isJumping && hp > 0) { velocityY = jumpForce; isJumping = true; } 
+        }, { passive: false });
+
+        function checkCollision(nextX, nextZ, moveDirX, moveDirZ) {
+            const dir = new THREE.Vector3(moveDirX, 0, moveDirZ).normalize();
+            const origin = new THREE.Vector3(player.position.x, player.position.y + 4, player.position.z);
+            wallRay.set(origin, dir);
+            const wallHits = wallRay.intersectObjects(collidableObjects);
+            if (wallHits.length > 0 && wallHits[0].distance < 3.5) { return false; }
+
+            const floorCheck = new THREE.Vector3(nextX, player.position.y + 10, nextZ);
+            floorRay.set(floorCheck, new THREE.Vector3(0, -1, 0));
+            const floorHits = floorRay.intersectObjects(collidableObjects);
+            if (floorHits.length === 0) { return false; } 
+            if (floorHits[0].point.y < player.position.y - 8) { return false; }
+
+            return true;
+        }              
+
+        function startBossPhase() {
+            isBossPhase = true;
+            document.getElementById('boss-banner').style.display = 'block';
+            
+            if(dungeon1) dungeon1.visible = false;
+            if(dungeon2) {
+                dungeon2.visible = true;
+                let tempCols = [];
+                dungeon2.traverse(child => { if (child.isMesh) tempCols.push(child); });
+                collidableObjects = tempCols; 
+            }
+
+            player.position.set(87, -10, -129);                        
+            velocityY = 0;
+
+            setTimeout(() => {
+                document.getElementById('boss-banner').style.display = 'none';
+                isWolfDead = false;
+                wolf.visible = true;
+                wolfHp = 500;
+                wHpRed.scale.x = 1;
+                wHpRed.position.x = 0;
+                wolfMat.opacity = 1;
+                wolfVelocityY = 0;
+                
+                wolf.position.set(87, -11, -184); 
+                wHpGroup.visible = true;
+
+                if (typeof dynamicCrystals !== 'undefined') {
+                    dynamicCrystals.forEach(c => scene.remove(c));
+                    dynamicCrystals = [];
+                    
+                    const crystalGeo = new THREE.CylinderGeometry(0, 2, 5, 4);
+                    const hpCrystalMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+                    const hpCrystal = new THREE.Mesh(crystalGeo, hpCrystalMat);
+                    hpCrystal.position.set(75, -5, -145); 
+                    hpCrystal.name = "hp_crystal";
+                    scene.add(hpCrystal);
+                    dynamicCrystals.push(hpCrystal);
+    
+                    const mpCrystalMat = new THREE.MeshBasicMaterial({ color: 0x00aaff, wireframe: true });
+                    const mpCrystal = new THREE.Mesh(crystalGeo, mpCrystalMat);
+                    mpCrystal.position.set(100, -5, -145); 
+                    mpCrystal.name = "mp_crystal";
+                    scene.add(mpCrystal);
+                    dynamicCrystals.push(mpCrystal);
+                }
+            }, 3000);                       
+        }                            
+ 
+        function update() {
+            
+            if (hp <= 0) return;
+            if (collidableObjects.length === 0) return;
+
+            if (mp < maxMp) { mp += 0.1; document.getElementById('mp-bar').style.width = (mp / maxMp * 100) + "%"; }
+                     
+            if (timerActive) {
+                timeLeft -= 1/60;
+                let displayTime = Math.max(0, Math.ceil(timeLeft));
+                let min = Math.floor(displayTime / 60);
+                let sec = displayTime % 60;
+                document.getElementById('timer-display').innerText = (min<10?"0":"")+min + ":" + (sec<10?"0":"")+sec;
+                if (timeLeft <= 0) { hp = 0; triggerGameOver("TIME EXPIRED", "The shadows consumed you."); }
+            }
+
+                     // --- JINWOO SMART ANIMATION LOGIC ---
+            if (isAttacking) {
+                player.material.map.offset.set(Math.floor(attackFrame += 0.20) % jinwooCols / jinwooCols, 0);
+                if (attackFrame >= jinwooCols) isAttacking = false;
+            } else if (Math.abs(moveData.x) > 0.1 || Math.abs(moveData.y) > 0.1) {
+                let nextX = player.position.x + moveData.x * 0.4;
+                let nextZ = player.position.z - moveData.y * 0.4;
+                
+                if (checkCollision(nextX, nextZ, moveData.x, -moveData.y)) { 
+                    player.position.x = nextX; player.position.z = nextZ; 
+                }
+                
+                // WALK FIX: Adapts to 2 rows or 3 rows automatically!
+                let walkY = (jinwooRows === 3) ? (1/3) : 0.5;
+                player.material.map.offset.set(Math.floor(walkTimer += 0.07) % jinwooCols / jinwooCols, walkY);
+                
+                if (moveData.x !== 0) player.rotation.y = (moveData.x > 0) ? 0 : Math.PI;
+                if (currentWalkSFX.paused) currentWalkSFX.play().catch(e => {});
+            } else { 
+                // IDLE FIX: Adapts to 2 rows or 3 rows automatically!
+                let idleY = (jinwooRows === 3) ? (2/3) : 0.5;
+                player.material.map.offset.set(0, idleY); 
+                
+                if (!currentWalkSFX.paused) { currentWalkSFX.pause(); currentWalkSFX.currentTime = 0; }
+            }                                                                                                                    
+
+            velocityY += gravity;
+            player.position.y += velocityY;
+            
+            // --- ORIGINAL FLOOR COLLISION ---
+            const rayOrigin = new THREE.Vector3(player.position.x, player.position.y + 5, player.position.z);
+            floorRay.set(rayOrigin, new THREE.Vector3(0, -1, 0));
+            const ground = floorRay.intersectObjects(collidableObjects);
+            
+            if (ground.length > 0 && ground[0].distance < 9.1 && velocityY <= 0) {
+                player.position.y = ground[0].point.y + 4; 
+                velocityY = 0; 
+                isJumping = false;
+            }                                                                                                    
+                         
+            if (player.position.y < -100) {
+                player.position.set(SPAWN.x, SPAWN.y, SPAWN.z); velocityY = 0; hp -= 15; 
+                document.getElementById('hp-bar').style.width = Math.max(0, hp) + "%";
+                if(hp <= 0) triggerGameOver("THE ABYSS", "You fell into the dark waters.");
+            }                  
+
+            // --- GOBLIN LOGIC ---
+            if (!isGoblinDead && !isBossPhase && !isCityPhase) {                        
+                const dist = goblin.position.distanceTo(player.position);
+                gobAnimTimer += 0.15;
+                if (gobHp <= 0) {
+                    isGoblinDead = true; hpGroup.visible = false; killCount++;
+                    
+                    if(typeof goblinKillSFX !== 'undefined') { goblinKillSFX.currentTime = 0; goblinKillSFX.play().catch(e=>{}); }                 
+                    document.getElementById('kill-count').innerText = `GOBLINS: ${killCount}/${MAX_KILLS}`;
+
+                    hp = Math.min(100, hp + 50); 
+                    document.getElementById('hp-bar').style.width = hp + "%";
+
+                    let vT = 0;
+                    const vI = setInterval(() => {
+                        vT += 0.05; gobMat.opacity = 1 - vT; goblin.position.y -= 0.05;
+                                   
+                        if (vT >= 1) { 
+                            clearInterval(vI);
+                            if (killCount < MAX_KILLS) {
+                                resetSingleGoblin();
+                            } else if (currentLevel === 5 && !isBossPhase) {
+                                startBossPhase(); 
+                            } else {
+                                timerActive = false;
+                                triggerGameOver("QUEST CLEAR", "The shadows accept your strength.", true);
+                            }
+                        }
+                    }, 50);
+                } else {
+                    if (dist > 7) {
+                        gobTex.offset.y = 0.5; gobTex.offset.x = (Math.floor(gobAnimTimer) % 3) / 3; 
+                        const dir = new THREE.Vector3().subVectors(player.position, goblin.position).normalize();
+                        goblin.position.x += dir.x * 0.12; goblin.position.z += dir.z * 0.12;
+                    } else {
+                        gobTex.offset.y = 0; gobTex.offset.x = (Math.floor(gobAnimTimer) % 3) / 3; 
+                        hp -= 0.15; document.getElementById('hp-bar').style.width = Math.max(0, hp) + "%";
+                        if(hp <= 0) triggerGameOver("YOU HAVE DIED", "The penalty quest begins.");
+                    }
+                    if (Math.abs(player.position.x - goblin.position.x) > 1) goblin.rotation.y = (player.position.x > goblin.position.x) ? 0 : Math.PI;
+                }
+                
+                gobVelocityY += gravity;
+                goblin.position.y += gobVelocityY;
+                floorRay.set(goblin.position, new THREE.Vector3(0, -1, 0));
+                const gobG = floorRay.intersectObjects(collidableObjects);
+                if (gobG.length > 0 && gobG[0].distance < 5.0 && gobVelocityY <= 0) {
+                    goblin.position.y = gobG[0].point.y + 3.5; gobVelocityY = 0; 
+                }
+                if (goblin.position.y < -100) resetSingleGoblin();
+            }
+
+            // --- CITY ORC LOGIC ---
+            if (isCityPhase) {
+                orcAnimTimer += 0.05;
+                let activeOrcs = 0;
+                let isAnyOrcWalking = false; // --- NEW: Tracks if we should play footsteps
+
+                // ORC 1
+                if (!isOrc1Dead) {
+                    activeOrcs++;
+                    const dist1 = orc1.position.distanceTo(player.position);
+                    if (orc1Hp <= 0) {
+                        isOrc1Dead = true; orc1HpGroup.visible = false; killCount++;
+                        
+                        // --- CHANGED: Play Orc Death Sound ---
+                        if(typeof orcKillSFX !== 'undefined') { orcKillSFX.currentTime = 0; orcKillSFX.play().catch(e=>{}); }
+                        
+                        document.getElementById('kill-count').innerText = `ORCS: ${killCount}/${MAX_KILLS}`;
+                        
+                        let vT1 = 0;
+                        const vI1 = setInterval(() => {
+                            vT1 += 0.05; orc1.material.opacity = 1 - vT1; orc1.position.y -= 0.05;
+                            if (vT1 >= 1) { clearInterval(vI1); orc1.visible = false; }
+                        }, 50);
+                    } else {
+                        if (dist1 > 8) {
+                            isAnyOrcWalking = true; // --- NEW: Orc 1 is walking!
+                            
+                            // Walk (Middle Row)
+                            orc1.material.map.offset.y = 0.333; 
+// ... (keep the rest of your Orc 1 movement math the exact same)             
+                            orc1.material.map.offset.x = (Math.floor(orcAnimTimer) % 3) / 3; 
+                            const dir = new THREE.Vector3().subVectors(player.position, orc1.position).normalize();
+                            orc1.position.x += dir.x * 0.15; orc1.position.z += dir.z * 0.15; 
+                        } else {
+                            // Attack (Bottom Row)
+                            orc1.material.map.offset.y = 0; 
+                            orc1.material.map.offset.x = (Math.floor(orcAnimTimer) % 3) / 3; 
+                            hp -= 0.05; document.getElementById('hp-bar').style.width = Math.max(0, hp) + "%";
+                            if(hp <= 0) triggerGameOver("YOU HAVE DIED", "The City Gates claimed your life.");
+                        }
+                        if (Math.abs(player.position.x - orc1.position.x) > 1) {
+                            orc1.rotation.y = (player.position.x > orc1.position.x) ? 0 : Math.PI;
+                        }
+                    }
+                    
+                    orc1VelocityY += gravity;
+                    orc1.position.y += orc1VelocityY;
+                    floorRay.set(orc1.position, new THREE.Vector3(0, -1, 0));
+                    const orc1G = floorRay.intersectObjects(collidableObjects);
+                    if (orc1G.length > 0 && orc1G[0].distance < 5.0 && orc1VelocityY <= 0) {
+                        orc1.position.y = orc1G[0].point.y + 4.5; orc1VelocityY = 0; 
+                    }
+                }
+
+                // ORC 2
+                if (!isOrc2Dead) {
+                    activeOrcs++;
+                    const dist2 = orc2.position.distanceTo(player.position);
+                    if (orc2Hp <= 0) {
+                        isOrc2Dead = true; orc2HpGroup.visible = false; killCount++;
+                        
+                        // --- CHANGED: Play Orc Death Sound ---
+                        if(typeof orcKillSFX !== 'undefined') { orcKillSFX.currentTime = 0; orcKillSFX.play().catch(e=>{}); }
+                        
+                        document.getElementById('kill-count').innerText = `ORCS: ${killCount}/${MAX_KILLS}`;
+                        
+                        let vT2 = 0;
+                        const vI2 = setInterval(() => {
+                            vT2 += 0.05; orc2.material.opacity = 1 - vT2; orc2.position.y -= 0.05;
+                            if (vT2 >= 1) { clearInterval(vI2); orc2.visible = false; }
+                        }, 50);
+                    } else {
+                        if (dist2 > 8) {
+                            isAnyOrcWalking = true; // --- NEW: Orc 2 is walking!
+                            
+                            // Walk (Middle Row)
+                            orc2.material.map.offset.y = 0.333; 
+// ... (keep the rest of your Orc 2 movement math the exact same)
+                 
+                            orc2.material.map.offset.x = (Math.floor(orcAnimTimer) % 3) / 3; 
+                            const dir = new THREE.Vector3().subVectors(player.position, orc2.position).normalize();
+                            orc2.position.x += dir.x * 0.15; orc2.position.z += dir.z * 0.15; 
+                        } else {
+                            // Attack (Bottom Row)
+                            orc2.material.map.offset.y = 0; 
+                            orc2.material.map.offset.x = (Math.floor(orcAnimTimer) % 3) / 3; 
+                            hp -= 0.05; document.getElementById('hp-bar').style.width = Math.max(0, hp) + "%";
+                            if(hp <= 0) triggerGameOver("YOU HAVE DIED", "The City Gates claimed your life.");
+                        }
+                        if (Math.abs(player.position.x - orc2.position.x) > 1) {
+                            orc2.rotation.y = (player.position.x > orc2.position.x) ? 0 : Math.PI;
+                        }
+                    }
+                    
+                    orc2VelocityY += gravity;
+                    orc2.position.y += orc2VelocityY;
+                    floorRay.set(orc2.position, new THREE.Vector3(0, -1, 0));
+                    const orc2G = floorRay.intersectObjects(collidableObjects);
+                    if (orc2G.length > 0 && orc2G[0].distance < 5.0 && orc2VelocityY <= 0) {
+                        orc2.position.y = orc2G[0].point.y + 4.5; orc2VelocityY = 0; 
+                    }
+                }
+
+                // SPAWN DELAY
+                if (activeOrcs === 0 && !isWaveSpawning) {
+                    isWaveSpawning = true;
+                    setTimeout(() => {
+                        if (hp > 0 && timerActive) { 
+                            if (killCount < MAX_KILLS) {
+                                hp = Math.min(100, hp + 30); 
+                                document.getElementById('hp-bar').style.width = hp + "%";
+                                resetDualOrcs();
+                            } else {
+                                timerActive = false;
+                                triggerGameOver("GATE CLEARED", "The City is safe... for now.", true);
+                            }
+                        }
+                        isWaveSpawning = false;
+                    }, 1500);
+                }
+          // --- NEW: PLAY/PAUSE ORC FOOTSTEPS ---
+        if (isAnyOrcWalking && hp > 0 && timerActive) {
+            if (orcWalkSFX.paused) orcWalkSFX.play().catch(e => {});
+        } else {
+            if (!orcWalkSFX.paused) orcWalkSFX.pause();
+        }      
+            }
+
+            // --- WOLF BOSS LOGIC ---
+            if (isBossPhase && !isWolfDead) {
+                const distW = wolf.position.distanceTo(player.position);
+                wolfAnimTimer += 0.18; 
+
+                if (wolfHp <= 0) {
+                    isWolfDead = true; wHpGroup.visible = false;
+                    let vT = 0;
+                    const vI = setInterval(() => {
+                        vT += 0.02; wolfMat.opacity = 1 - vT; wolf.position.y -= 0.05;
+                        if (vT >= 1) { 
+                            clearInterval(vI);
+                            timerActive = false;
+                            triggerGameOver("BOSS DEFEATED", "You have conquered the Dungeon.", true);
+                        }
+                    }, 50);
+                } else {
+                    if (typeof wolfAttackTimer === 'undefined') window.wolfAttackTimer = 0;
+                    if (typeof isWolfAttackingState === 'undefined') window.isWolfAttackingState = true;
+
+                    wolfAttackTimer += 1/60;
+
+                    if (isWolfAttackingState && wolfAttackTimer >= 2.0) {
+                        isWolfAttackingState = false;
+                        wolfAttackTimer = 0;
+                    } else if (!isWolfAttackingState && wolfAttackTimer >= 3.0) {
+                        isWolfAttackingState = true;
+                        wolfAttackTimer = 0;
+                    }
+
+                    if (Math.abs(player.position.x - wolf.position.x) > 0.5) {
+                        wolf.rotation.y = (player.position.x > wolf.position.x) ? 0 : Math.PI;                               
+                    }
+
+                    if (wHpGroup) wHpGroup.rotation.y = -wolf.rotation.y;
+
+                     if (distW > 14) {
+                        if (isWolfAttackingState) {
+                            wolfTex.offset.y = 0.5; 
+                            if (wolfWalkSFX.paused) wolfWalkSFX.play().catch(e=>{});
+                        } else {
+                            wolfTex.offset.y = 0; 
+                            if (!wolfWalkSFX.paused) { wolfWalkSFX.pause(); }
+                        }
+                        
+                        if (!wolfAttackSFX.paused) { wolfAttackSFX.pause(); wolfAttackSFX.currentTime = 0; }
+
+                        let currentAnimTimer = isWolfAttackingState ? wolfAnimTimer : (wolfAnimTimer * 0.5);
+                        wolfTex.offset.x = (Math.floor(currentAnimTimer) % 3) / 3;
+
+                        const dir = new THREE.Vector3().subVectors(player.position, wolf.position).normalize();
+                        const currentWolfSpeed = isWolfAttackingState ? 0.10 : 0.03;
+                        wolf.position.x += dir.x * currentWolfSpeed; 
+                        wolf.position.z += dir.z * currentWolfSpeed;
+                    } else {
+                        if (!wolfWalkSFX.paused) { wolfWalkSFX.pause(); }
+
+                        if (isWolfAttackingState) {
+                            wolfTex.offset.y = 0.0; 
+                            wolfTex.offset.x = (Math.floor(wolfAnimTimer) % 3) / 3;
+
+                            if (wolfAttackSFX.paused) {
+                                wolfAttackSFX.currentTime = 0;
+                                wolfAttackSFX.play().catch(e=>{});
+                            }
+
+                            hp -= 0.45; 
+                            document.getElementById('hp-bar').style.width = Math.max(0, hp) + "%";
+                            if(hp <= 0) triggerGameOver("YOU HAVE DIED", "The White Wolf tore you apart.");
+                        } else {
+                            wolfTex.offset.y = 0.0;
+                            wolfTex.offset.x = 0;
+                            if (!wolfAttackSFX.paused) { wolfAttackSFX.pause(); wolfAttackSFX.currentTime = 0; }
+                        }
+                    }                    
+                }
+
+                wolfVelocityY += gravity;
+                wolf.position.y += wolfVelocityY;
+                
+                const wolfRayOrigin = new THREE.Vector3(wolf.position.x, wolf.position.y + 20, wolf.position.z);
+                floorRay.set(wolfRayOrigin, new THREE.Vector3(0, -1, 0));
+                const wFloor = floorRay.intersectObjects(collidableObjects);
+                
+                if (wFloor.length > 0) {
+                    let trueWolfFloorY = wFloor[0].point.y;
+                    if (wolf.position.y <= trueWolfFloorY + 6 && wolfVelocityY <= 0) {
+                        wolf.position.y = trueWolfFloorY + 6; 
+                        wolfVelocityY = 0; 
+                    }
+                }
+            }                                                                 
+
+            if (isBossPhase && typeof dynamicCrystals !== 'undefined') {
+                dynamicCrystals.forEach((crystal, index) => {
+                    crystal.rotation.y += 0.05; 
+                    const distToCrystal = player.position.distanceTo(crystal.position);
+                    if (distToCrystal < 6) { 
+                        if (crystal.name === "hp_crystal") {
+                            hp = Math.min(100, hp + 40); 
+                            document.getElementById('hp-bar').style.width = hp + "%";
+                        } else if (crystal.name === "mp_crystal") {
+                            mp = Math.min(maxMp, mp + 150); 
+                            document.getElementById('mp-bar').style.width = (mp / maxMp * 100) + "%";
+                        }
+                        scene.remove(crystal);
+                        dynamicCrystals.splice(index, 1);
+                    }
+                });
+            }
+        }
+        
+        function resetSingleGoblin() {
+            isGoblinDead = false; gobHp = 100; goblin.material.opacity = 1;
+            goblin.position.set(player.position.x + (Math.random()*30-15), 20, player.position.z - 35); 
+            gobVelocityY = 0; hpGroup.visible = true; hpGreen.scale.x = 1; hpGreen.position.x = 0;
+        }              
+
+                function resetDualOrcs() {
+            if (killCount >= MAX_KILLS) return; 
+            
+            isOrc1Dead = false; orc1Hp = 150; orc1.material.opacity = 1;
+            orc1.position.set(player.position.x - 20, 20, player.position.z - 35); 
+            orc1VelocityY = 0; orc1HpGroup.visible = true; orc1HpRed.scale.x = 1; orc1HpRed.position.x = 0;
+            orc1.material.map.offset.set(0, 2/3); // FIX: 2/3 points perfectly to the top Idle row
+            orc1.visible = true;
+            
+            isOrc2Dead = false; orc2Hp = 150; orc2.material.opacity = 1;
+            orc2.position.set(player.position.x + 20, 20, player.position.z - 35); 
+            orc2VelocityY = 0; orc2HpGroup.visible = true; orc2HpRed.scale.x = 1; orc2HpRed.position.x = 0;
+            orc2.material.map.offset.set(0, 2/3); // FIX: 2/3 points perfectly to the top Idle row
+            orc2.visible = true;
+        }             
+
+        function startLevel(lvl) {
+            let config = levelData[lvl - 1]; 
+            timeLeft = config.time;
+            MAX_KILLS = config.gobs;
+            
+            hp = 100; mp = 300; timerActive = true; killCount = 0;
+            velocityY = 0; 
+            isBossPhase = false; 
+            if (typeof wolf !== 'undefined') { wolf.visible = false; isWolfDead = true; } 
+ 
+// Silence both audio tracks before starting the new level
+            walkSFX.pause();           
+            cityWalkSFX.pause();
+            // Silence tracks before starting the new level
+            if (typeof walkSFX !== 'undefined') walkSFX.pause();
+            if (typeof cityWalkSFX !== 'undefined') cityWalkSFX.pause();
+            if (typeof orcWalkSFX !== 'undefined') orcWalkSFX.pause(); // Add this line
+            
+                       
+            if (lvl >= 6 && lvl <= 9) {
+                isCityPhase = true;
+                currentWalkSFX = cityWalkSFX;
+                                
+                if(dungeon1) dungeon1.visible = false;
+                if(dungeon2) dungeon2.visible = false;
+                if(cityScene) cityScene.visible = true;
+                collidableObjects = cityColliders; 
+                
+                if (typeof goblin !== 'undefined') {
+                    goblin.visible = false;
+                    hpGroup.visible = false;
+                }
+                
+                // FIX: Tell the engine the new sprite is exactly 3x3!
+                jinwooCols = 3; 
+                jinwooRows = 3; 
+                player.material.map = jinwooNewTex; 
+                player.material.needsUpdate = true;                                               
+                document.getElementById('ui').innerHTML = `LEVEL: ${lvl}<br>STATUS: S_RANK_VIVID<br><span id="kill-count">ORCS: 0/${MAX_KILLS}</span>`;
+                
+                player.position.set(0, 5, 50); 
+                resetDualOrcs();
+                
+            } else {
+                isCityPhase = false;
+                currentWalkSFX = walkSFX; // Switch to dungeon footsteps
+                                
+                if(dungeon1) dungeon1.visible = true;
+                if(dungeon2) dungeon2.visible = false;
+                if(cityScene) cityScene.visible = false;
+                collidableObjects = allDungeon1Colliders;
+                
+                if (typeof orc1 !== 'undefined') { orc1.visible = false; orc1HpGroup.visible = false; }
+                if (typeof orc2 !== 'undefined') { orc2.visible = false; orc2HpGroup.visible = false; }
+                if (typeof goblin !== 'undefined') goblin.visible = true;
+                
+                // FIX: Tell the engine the old sprite is 3x2!
+                jinwooCols = 3;
+                jinwooRows = 2;
+                player.material.map = jinwooTex;
+                player.material.needsUpdate = true;
+                
+                document.getElementById('ui').innerHTML = `LEVEL: ${lvl}<br>STATUS: S_RANK_VIVID<br><span id="kill-count">GOBLINS: 0/${MAX_KILLS}</span>`;
+                
+                player.position.set(SPAWN.x, SPAWN.y, SPAWN.z);
+                resetSingleGoblin();
+            }                       
+
+            if (lvl === 5 && !dungeon2) {
+                loader.load('level5_assets/cave_boss.gltf', (gltf) => {                    
+                    dungeon2 = gltf.scene;
+                    dungeon2.scale.set(25, 25, 25); 
+                    dungeon2.position.set(0, -15, -60);
+                    
+                    const texLoader = new THREE.TextureLoader();
+                    dungeon2.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            const matName = child.material.name;
+                            if (matName) {
+                                const texPath = `level5_assets/textures/${matName}_diffuse.png`;
+                                const newTex = texLoader.load(texPath);
+                                newTex.colorSpace = THREE.SRGBColorSpace; 
+                                child.material = new THREE.MeshStandardMaterial({
+                                    map: newTex, roughness: 0.8, metalness: 0.1
+                                });
+                            }
+                        }
+                    });
+                    scene.add(dungeon2);
+                    dungeon2.visible = false; 
+                });
+            }                      
+
+            document.getElementById('hp-bar').style.width = "100%";
+            document.getElementById('mp-bar').style.width = "100%";
+            document.getElementById('death-screen').style.display = 'none';
+        }              
+
+        // Create a 'smoothed' target that doesn't suffer from physics jitter
+        let cameraTarget = new THREE.Vector3(player.position.x, player.position.y + 12, player.position.z + 45);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+
+            // Update the camera target position smoothly
+            cameraTarget.set(player.position.x, player.position.y + 12, player.position.z + 45);
+
+            // Lerp the camera position toward that smooth target
+            camera.position.lerp(cameraTarget, 0.15); 
+            
+            // Look at the player
+            camera.lookAt(player.position.x, player.position.y, player.position.z);
+            renderer.render(scene, camera);
+        }                            
+        animate();
+
+        window.respawn = function() { startLevel(currentLevel); };
+
+        // --- UPDATED: LEVEL 9 TO LEVEL 10 TRANSITION ---
+        window.nextLevel = function() {
+            if (currentLevel < 9) {
+                currentLevel++;
+                startLevel(currentLevel);
+            } else if (currentLevel === 9) {
+                // The player beat Level 9. Teleport them to the separate HTML file!
+                document.getElementById('death-title').innerText = "TELEPORTING...";
+                document.getElementById('death-msg').innerText = "Entering the Monarch's Ritual...";
+                
+                setTimeout(() => {
+                    window.location.href = "level_10.html";
+                }, 1000); // Small 1-second delay so it looks cool before switching pages
+            }
+        };
+        
+        // --- UPDATED: DEV SKIPPER ---
+        window.devSkipLevel = function() {
+            if (currentLevel < 9) {
+                currentLevel++;
+                startLevel(currentLevel);
+                console.log("Dev Cheat: Skipped to Level " + currentLevel);
+            } else if (currentLevel === 9) {
+                // Allows you to skip straight from 9 to 10 for testing!
+                console.log("Dev Cheat: Teleporting to Snake Boss!");
+                window.location.href = "level_10.html";
+            }
+        };                
+                        
+        window.toggleFullscreen = function() {
+                
+            let elem = document.documentElement;
+            if (!document.fullscreenElement) {
+                elem.requestFullscreen().then(() => {
+                    if (screen.orientation && screen.orientation.lock) {
+                        screen.orientation.lock('landscape').catch(e => console.log("Orientation lock not supported on this device."));
+                    }
+                }).catch(err => {
+                    console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        };
+        
+        function triggerGameOver(title, msg, isVictory = false) { 
+            if (typeof wolfWalkSFX !== 'undefined') wolfWalkSFX.pause();
+            if (typeof wolfAttackSFX !== 'undefined') wolfAttackSFX.pause();
+            if (typeof orcWalkSFX !== 'undefined') orcWalkSFX.pause(); // Add this line                    
+        
+            if (typeof wolfWalkSFX !== 'undefined') wolfWalkSFX.pause();
+            if (typeof wolfAttackSFX !== 'undefined') wolfAttackSFX.pause();
+                     
+            document.getElementById('death-title').innerText = title;
+            document.getElementById('death-msg').innerText = msg;
+            
+            const btn = document.getElementById('respawn-btn');
+            if (isVictory) {
+                btn.innerText = "ENTER NEXT LEVEL";
+                btn.onclick = window.nextLevel;
+                btn.style.borderColor = "#00ff00"; 
+                btn.style.color = "#00ff00";
+                btn.style.boxShadow = "0 0 15px rgba(0, 255, 0, 0.4)";
+            } else {
+                btn.innerText = "RE-ENTER DUNGEON";
+                btn.onclick = window.respawn;
+                btn.style.borderColor = "#ff0000"; 
+                btn.style.color = "#ff0000";
+                btn.style.boxShadow = "0 0 15px rgba(255, 0, 0, 0.4)";
+            }
+            document.getElementById('death-screen').style.display = 'flex'; 
+        }
+
+        setTimeout(() => startLevel(1), 500); 
+    </script>
+</body>
+</html>                

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Dungeon
+* source:	https://sketchfab.com/3d-models/dungeon-bd2c1fccbd024760b8553a959e1a0c4b
+* author:	Yuliia Tsukanova (https://sketchfab.com/yuliatsu)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Dungeon" (https://sketchfab.com/3d-models/dungeon-bd2c1fccbd024760b8553a959e1a0c4b) by Yuliia Tsukanova (https://sketchfab.com/yuliatsu) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solo Leveling: The Frost Peak</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: 'Courier New', monospace; }
+        
+        #ui { position: absolute; top: 20px; left: 20px; color: #ffffff; text-shadow: 0 0 10px #000000; z-index: 10; font-weight: bold; }
+        
+        .status-container { position: absolute; top: 80px; left: 20px; z-index: 10; width: 150px; }
+        .bar-bg { width: 100%; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #444; margin-bottom: 5px; border-radius: 4px; overflow: hidden; }
+        #hp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #00ff00,  #008800); transition: width 0.2s; }
+        #mp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #00aaff, #0044ff); }
+
+        #joystick-zone { position: absolute; bottom: 50px; left: 30px; width: 120px; height: 120px; z-index: 20; touch-action: none; }
+        
+        .btn { position: absolute; width: 75px; height: 75px; background: rgba(255, 255, 255, 0.2); border: 2px solid #ffffff; border-radius: 50%; color: #ffffff; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 30; user-select: none; box-shadow: 0 0 15px rgba(0, 0, 0, 0.2); font-size: 12px; touch-action: none; }
+        .btn:active { background: rgba(255, 255, 255, 0.4); }
+        
+        #attack-btn { bottom: 140px; right: 20px; }
+        #dagger-btn { bottom: 140px; right: 110px; }
+        #jump-btn { bottom: 50px; right: 65px; }
+        #target-btn { bottom: 230px; right: 20px; background: rgba(255, 0, 0, 0.2); }
+    </style>
+</head>
+<body>
+    <div id="ui">LEVEL: 11<br>STATUS: SHADOW MONARCH<br>LOCATION: FROZEN PEAK<br><span id="objective" style="color: #ff3333;">OBJECTIVE: SURVIVE THE HORDE (0/15)</span></div>
+    <div class="status-container">
+        <div class="bar-bg"><div id="hp-bar"></div></div>
+        <div class="bar-bg"><div id="mp-bar"></div></div>
+    </div>
+
+    <div id="joystick-zone"></div>
+    <div id="attack-btn" class="btn">STRIKE</div>
+    <div id="dagger-btn" class="btn">DAGGER</div>
+    <div id="jump-btn" class="btn">JUMP</div>
+    <div id="target-btn" class="btn">LOCK</div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.163.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.163.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- GLOBAL ARRAYS & STATE ---
+        const floorColliders = []; 
+        const obstacles = []; 
+        const enemies = []; 
+        const activeProjectiles = [];
+        const enemyProjectiles = []; 
+        let lockedEnemy = null; 
+        
+        // Phase Logic
+        let gamePhase = 1;
+        let orcsKilled = 0;
+        let orcsSpawnedTotal = 0;
+        const TARGET_ORC_KILLS = 15;
+        let phaseTwoStarted = false;
+        let playerHP = 100;
+
+        let moveData = { x: 0, y: 0 };
+        let velocityY = 0;
+        let isJumping = false;
+        let cameraAngle = 0;
+        let lastAimDir = new THREE.Vector3(1, 0, 0);
+        let isSwiping = false;
+        let previousTouchX = 0;
+        let facingRight = true;
+
+        let frame = 0;
+        let frameTimer = 0;
+        let currentState = 'IDLE'; 
+        
+        const gravity = -0.025;
+        const jumpForce = 0.65;
+        const playerHalfHeight = 6; 
+        const moveSpeed = 0.35; 
+        const playerRadius = 1.8; 
+        const animationSpeed = 0.07; 
+        const floorRay = new THREE.Raycaster();
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); 
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.002); 
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9); 
+        scene.add(ambientLight);
+        const sun = new THREE.DirectionalLight(0xffffee, 1.5);
+        sun.position.set(100, 200, 50);
+        scene.add(sun);
+
+        // --- TEXTURE LOADER ---
+        const textureLoader = new THREE.TextureLoader();
+        
+        function loadRawTexture(path, isSpriteSheet = true) {
+            const tex = textureLoader.load(path);
+            tex.generateMipmaps = false; 
+            tex.magFilter = THREE.LinearFilter; 
+            tex.minFilter = THREE.LinearFilter; 
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); 
+            tex.colorSpace = THREE.SRGBColorSpace;
+            if (isSpriteSheet) tex.repeat.set(0.5, 0.5); 
+            return tex;
+        }
+
+        const texIdle = loadRawTexture('jinwoo_ideal.png');
+        const texWalk = loadRawTexture('jinwoo_walk.png');
+        const texAttack = loadRawTexture('jinwoo_attack.png');
+        const texThrow = loadRawTexture('jinwoo_throw.png');
+        const texDagger = loadRawTexture('dagger.png', false); 
+
+        const texOrcWalk = loadRawTexture('glacialorc_walk.png');
+        const texOrcAttack = loadRawTexture('glacialorc_attack.png');
+        const texOrcDeath = loadRawTexture('glacialorc_death.png');
+
+        const texElfWalk = loadRawTexture('elf_walk.png');
+        const texElfAttack = loadRawTexture('elf_attack.png');
+        const texElfDeath = loadRawTexture('elf_death.png');
+        const texSnowflake = loadRawTexture('snowflake.png', false); 
+
+        const targetMarkerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+        const targetMarker = new THREE.Mesh(new THREE.OctahedronGeometry(1.5), targetMarkerMat);
+        targetMarker.visible = false;
+        scene.add(targetMarker);
+
+        // --- ENVIRONMENT GENERATION ---
+        const groundGeo = new THREE.CylinderGeometry(500, 550, 40, 64);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0.1 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.position.y = -20; 
+        scene.add(ground);
+        floorColliders.push(ground);
+
+        const rockGeo = new THREE.DodecahedronGeometry(1);
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x667788, roughness: 0.9 }); 
+        for (let i = 0; i < 50; i++) {
+            const rock = new THREE.Mesh(rockGeo, rockMat);
+            const scale = 2 + Math.random() * 8;
+            rock.scale.set(scale, scale, scale);
+            let r = 40 + Math.random() * 410;
+            const theta = Math.random() * Math.PI * 2;
+            rock.position.set(r * Math.cos(theta), scale * 0.5, r * Math.sin(theta));
+            rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            scene.add(rock);
+            obstacles.push({ mesh: rock, radius: scale * 0.7 }); 
+        }
+
+        const treeCount = 60;
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2d1a11, roughness: 1.0 }); 
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0xd4f0ff, roughness: 0.6, metalness: 0.2, flatShading: true });
+        for (let i = 0; i < treeCount; i++) {
+            const treeGroup = new THREE.Group();
+            const trunkPath = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3((Math.random() - 0.5) * 4, 12, (Math.random() - 0.5) * 4),
+                new THREE.Vector3((Math.random() - 0.5) * 8, 25, (Math.random() - 0.5) * 8)
+            ]);
+            const trunkGeo = new THREE.TubeGeometry(trunkPath, 8, 1.5 + Math.random() * 0.5, 8, false);
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            treeGroup.add(trunk);
+
+            for (let b = 0; b < 10 + Math.floor(Math.random() * 6); b++) {
+                const heightPercent = 0.3 + (Math.random() * 0.7); 
+                const branchStart = trunkPath.getPointAt(heightPercent);
+                const angle = Math.random() * Math.PI * 2;
+                const upwardTilt = 0.5 + Math.random(); 
+                const length = 5 + Math.random() * 6;
+                const branchEnd = new THREE.Vector3(branchStart.x + Math.cos(angle) * length, branchStart.y + upwardTilt * length, branchStart.z + Math.sin(angle) * length);
+                const branchGeo = new THREE.TubeGeometry(new THREE.LineCurve3(branchStart, branchEnd), 2, 0.3 + Math.random() * 0.3, 5, false);
+                const branch = new THREE.Mesh(branchGeo, trunkMat);
+                treeGroup.add(branch);
+                
+                for (let l = 0; l < 2 + Math.floor(Math.random() * 3); l++) {
+                    const leaf = new THREE.Mesh(new THREE.ConeGeometry(3, 7, 3), leavesMat);
+                    leaf.position.set(branchEnd.x + (Math.random() - 0.5) * 4, branchEnd.y + (Math.random() - 0.5) * 4, branchEnd.z + (Math.random() - 0.5) * 4);
+                    leaf.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                    treeGroup.add(leaf);
+                }
+            }
+            let tR = 50 + Math.random() * 400;
+            const tTheta = Math.random() * Math.PI * 2;
+            treeGroup.position.set(tR * Math.cos(tTheta), 0, tR * Math.sin(tTheta));
+            treeGroup.rotation.y = Math.random() * Math.PI * 2;
+            treeGroup.scale.setScalar(0.7 + Math.random() * 0.5);
+            scene.add(treeGroup);
+            obstacles.push({ mesh: treeGroup, radius: 2.5 });
+        }
+
+        const snowGeo = new THREE.BufferGeometry();
+        const snowCount = 1500;
+        const snowPos = new Float32Array(snowCount * 3);
+        const snowSpeeds = new Float32Array(snowCount);
+        for (let i = 0; i < snowCount; i++) {
+            snowPos[i * 3] = (Math.random() - 0.5) * 200;    
+            snowPos[i * 3 + 1] = Math.random() * 100;         
+            snowPos[i * 3 + 2] = (Math.random() - 0.5) * 200; 
+            snowSpeeds[i] = 0.2 + Math.random() * 0.5;        
+        }
+        snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+        const snowMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.0, transparent: true, opacity: 0.8 });
+        const snowParticles = new THREE.Points(snowGeo, snowMat);
+        scene.add(snowParticles);
+
+        // --- COMPASS ARROW ---
+        const arrowGroup = new THREE.Group();
+        scene.add(arrowGroup);
+        const arrowTex = loadRawTexture('arrow.png', false);
+        const arrowMat = new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+        const arrowMesh = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), arrowMat);
+        arrowMesh.rotation.x = -Math.PI / 2; 
+        arrowGroup.add(arrowMesh);
+        arrowMesh.rotation.z = -Math.PI/2; 
+        arrowGroup.visible = false; 
+
+        // --- PLAYER SETUP ---
+        const playerMat = new THREE.MeshBasicMaterial({ map: texIdle, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
+        const player = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), playerMat);
+        player.scale.set(1.5, 1.5, 1);
+        player.position.set(0, 10, 0); 
+        scene.add(player);
+
+        // --- ENEMY SYSTEM ---
+        function spawnEnemy(type, posX, posZ) {
+            const myWalk = type === 'orc' ? texOrcWalk.clone() : texElfWalk.clone();
+            const myAttack = type === 'orc' ? texOrcAttack.clone() : texElfAttack.clone();
+            const myDeath = type === 'orc' ? texOrcDeath.clone() : texElfDeath.clone();
+            
+            myWalk.needsUpdate = true;
+            myAttack.needsUpdate = true;
+            myDeath.needsUpdate = true;
+
+            const mat = new THREE.MeshBasicMaterial({ 
+                transparent: true, 
+                opacity: 0, 
+                alphaTest: 0.05, 
+                side: THREE.DoubleSide 
+            });
+            
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), mat);
+            mesh.scale.set(1.5, 1.5, 1);
+            mesh.position.set(posX, 10, posZ);
+            
+            mesh.userData = { 
+                type: type, 
+                state: 'spawning', 
+                hp: type === 'orc' ? 100 : 50,
+                radius: 3.0,
+                frame: 0,
+                frameTimer: 0,
+                facingRight: true,
+                cooldown: 0,
+                textures: { walk: myWalk, attack: myAttack, death: myDeath } 
+            };
+            
+            mat.map = myDeath;
+            
+            scene.add(mesh);
+            enemies.push(mesh);
+            obstacles.push({ mesh: mesh, radius: mesh.userData.radius });
+        }
+
+        // --- PROJECTILE SYSTEMS ---
+        const daggerGeo = new THREE.PlaneGeometry(8, 8); 
+        const daggerMat = new THREE.MeshBasicMaterial({ map: texDagger, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+
+        function spawnDagger() {
+            const dagger = new THREE.Mesh(daggerGeo, daggerMat);
+            dagger.position.copy(player.position);
+            dagger.position.y += 2; 
+
+            let targetEnemy = null;
+            if (lockedEnemy) {
+                targetEnemy = lockedEnemy;
+            } else {
+                let shortestDistance = 60; 
+                for (let i = 0; i < enemies.length; i++) {
+                    if (enemies[i].userData.state === 'dying') continue; 
+                    const dist = player.position.distanceTo(enemies[i].position);
+                    if (dist < shortestDistance) {
+                        shortestDistance = dist;
+                        targetEnemy = enemies[i];
+                    }
+                }
+            }
+
+            let throwDirection = new THREE.Vector3();
+            if (targetEnemy) {
+                const enemyChest = new THREE.Vector3().copy(targetEnemy.position);
+                enemyChest.y += 2; 
+                throwDirection.subVectors(enemyChest, dagger.position).normalize();
+                facingRight = (targetEnemy.position.x > player.position.x);
+            } else {
+                throwDirection = lastAimDir.clone();
+            }
+
+            if (!facingRight) dagger.scale.x = -1; 
+            dagger.userData.velocity = throwDirection.multiplyScalar(0.8); 
+            scene.add(dagger);
+            activeProjectiles.push(dagger);
+        }
+
+        function shootSnowflake(startPos, targetPos) {
+            const flakeMat = new THREE.MeshBasicMaterial({ map: texSnowflake, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+            const flake = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), flakeMat);
+            flake.position.copy(startPos);
+            flake.position.y += 2; 
+            
+            let dir = new THREE.Vector3().subVectors(new THREE.Vector3(targetPos.x, targetPos.y + 2, targetPos.z), flake.position).normalize();
+            flake.userData.velocity = dir.multiplyScalar(0.4); 
+            
+            scene.add(flake);
+            enemyProjectiles.push(flake);
+        }
+
+        // --- CONTROLS ---
+        document.addEventListener('touchstart', (e) => {
+            if (e.target.tagName !== 'CANVAS') return; 
+            isSwiping = true;
+            previousTouchX = e.touches[0].clientX;
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isSwiping) return;
+            cameraAngle -= (e.touches[0].clientX - previousTouchX) * 0.008; 
+            previousTouchX = e.touches[0].clientX;
+        }, { passive: false });
+
+        document.addEventListener('touchend', () => { isSwiping = false; });
+
+        nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '80px', bottom: '80px' } })
+            .on('move', (e, d) => { 
+                moveData = d.vector; 
+                if (currentState !== 'ATTACK' && currentState !== 'THROW') {
+                    if (currentState !== 'WALK') { currentState = 'WALK'; player.material.map = texWalk; frame = 0; }
+                    facingRight = moveData.x > 0;
+                }
+            })
+            .on('end', () => { 
+                moveData = { x: 0, y: 0 }; 
+                if (currentState === 'WALK') { currentState = 'IDLE'; player.material.map = texIdle; frame = 0; }
+            });
+
+        document.getElementById('jump-btn').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isJumping) { velocityY = jumpForce; isJumping = true; } }, { passive: false });
+        
+        document.getElementById('attack-btn').addEventListener('touchstart', (e) => { 
+            e.preventDefault();
+            if (currentState !== 'ATTACK' && currentState !== 'THROW') { currentState = 'ATTACK'; player.material.map = texAttack; frame = 0; }
+        });
+
+        document.getElementById('dagger-btn').addEventListener('touchstart', (e) => { 
+            e.preventDefault();
+            if (currentState !== 'ATTACK' && currentState !== 'THROW') { currentState = 'THROW'; player.material.map = texThrow; frame = 0; spawnDagger(); }
+        });
+
+        document.getElementById('target-btn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (lockedEnemy) {
+                lockedEnemy = null; targetMarker.visible = false;
+            } else {
+                let closest = null, minDist = 100; 
+                for (let i = 0; i < enemies.length; i++) {
+                    if(enemies[i].userData.state === 'dying') continue;
+                    let dist = player.position.distanceTo(enemies[i].position);
+                    if (dist < minDist) { minDist = dist; closest = enemies[i]; }
+                }
+                if (closest) { lockedEnemy = closest; targetMarker.visible = true; }
+            }
+        });
+
+        let cameraTarget = new THREE.Vector3();
+        let time = 0;
+
+        function update() {
+            // --- GAME PHASES LOGIC ---
+            if (gamePhase === 1) {
+                let activeOrcs = enemies.filter(e => e.userData.type === 'orc' && e.userData.state !== 'dying').length;
+                if (activeOrcs < 3 && orcsSpawnedTotal < TARGET_ORC_KILLS) {
+                    const angle = Math.random() * Math.PI * 2;
+                    spawnEnemy('orc', player.position.x + Math.cos(angle) * 70, player.position.z + Math.sin(angle) * 70);
+                    orcsSpawnedTotal++;
+                }
+                
+                if (orcsKilled >= TARGET_ORC_KILLS) {
+                    gamePhase = 2;
+                    document.getElementById('objective').innerHTML = "OBJECTIVE: HUNT THE PHANTOMS";
+                    document.getElementById('objective').style.color = "#00ffff"; 
+                }
+            } else if (gamePhase === 2) {
+                if (!phaseTwoStarted) {
+                    arrowGroup.visible = true;
+                    for(let i = 0; i < 5; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const r = 100 + Math.random() * 250;
+                        spawnEnemy('elf', player.position.x + Math.cos(angle) * r, player.position.z + Math.sin(angle) * r);
+                    }
+                    phaseTwoStarted = true;
+                }
+
+                let closestElf = null;
+                let minDist = Infinity;
+                enemies.forEach(e => {
+                    if (e.userData.type === 'elf' && e.userData.state !== 'dying') {
+                        let d = player.position.distanceTo(e.position);
+                        if (d < minDist) { minDist = d; closestElf = e; }
+                    }
+                });
+                
+                if (closestElf) {
+                    arrowGroup.lookAt(closestElf.position.x, arrowGroup.position.y, closestElf.position.z);
+                } else {
+                    arrowGroup.visible = false;
+                    document.getElementById('objective').innerHTML = "OBJECTIVE: GATE CLEARED";
+                    document.getElementById('objective').style.color = "#00ff00"; 
+                }
+            }
+
+            // --- ENEMY AI & ANIMATION LOOP ---
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const data = enemy.userData;
+
+                if (data.state === 'spawning') {
+                    enemy.material.opacity += 0.05; 
+                    if (enemy.material.opacity >= 1) { enemy.material.opacity = 1; data.state = 'chasing'; }
+                } else if (data.state === 'dying') {
+                    data.frameTimer += animationSpeed * 0.8;
+                    if (data.frameTimer > 1) {
+                        data.frameTimer = 0;
+                        if (data.frame < 3) data.frame++;
+                        else enemy.material.opacity -= 0.05; 
+                    }
+                    
+                    if (enemy.material.opacity <= 0) {
+                        scene.remove(enemy);
+                        enemies.splice(i, 1);
+                        if (data.type === 'orc') {
+                            orcsKilled++;
+                            if (gamePhase === 1) document.getElementById('objective').innerHTML = `OBJECTIVE: SURVIVE THE HORDE (${orcsKilled}/${TARGET_ORC_KILLS})`;
+                        }
+                        continue;
+                    }
+                } else {
+                    const distToPlayer = enemy.position.distanceTo(player.position);
+                    let moveDir = new THREE.Vector3();
+                    let isMoving = false;
+
+                    if (data.type === 'orc') {
+                        if (distToPlayer > 8) {
+                            data.state = 'chasing';
+                            moveDir.subVectors(player.position, enemy.position).normalize();
+                            isMoving = true;
+                        } else {
+                            data.state = 'attacking';
+                        }
+                    } else if (data.type === 'elf') {
+                        if (distToPlayer < 20) { 
+                            data.state = 'chasing';
+                            moveDir.subVectors(enemy.position, player.position).normalize();
+                            isMoving = true;
+                        } else if (distToPlayer > 60) { 
+                            data.state = 'chasing';
+                            moveDir.subVectors(player.position, enemy.position).normalize();
+                            isMoving = true;
+                        } else {
+                            data.state = 'attacking';
+                            if (data.cooldown <= 0) {
+                                shootSnowflake(enemy.position, player.position);
+                                data.cooldown = 120; 
+                            }
+                        }
+                    }
+
+                    if (data.cooldown > 0) data.cooldown--;
+
+                    // NEW ENEMY COLLISION LOGIC
+                    if (isMoving) {
+                        let eSpeed = data.type === 'orc' ? 0.2 : 0.25;
+                        let moveX = moveDir.x * eSpeed;
+                        let moveZ = moveDir.z * eSpeed;
+
+                        let canMoveX = true;
+                        let canMoveZ = true;
+
+                        for (let k = 0; k < obstacles.length; k++) {
+                            const obs = obstacles[k];
+                            if (obs.mesh === enemy) continue; // Don't collide with self
+
+                            if (Math.sqrt(Math.pow((enemy.position.x + moveX) - obs.mesh.position.x, 2) + Math.pow(enemy.position.z - obs.mesh.position.z, 2)) < (obs.radius + data.radius)) { 
+                                canMoveX = false; 
+                            }
+                            if (Math.sqrt(Math.pow(enemy.position.x - obs.mesh.position.x, 2) + Math.pow((enemy.position.z + moveZ) - obs.mesh.position.z, 2)) < (obs.radius + data.radius)) { 
+                                canMoveZ = false; 
+                            }
+                        }
+
+                        if (canMoveX) enemy.position.x += moveX;
+                        if (canMoveZ) enemy.position.z += moveZ;
+                        
+                        data.facingRight = moveDir.x > 0;
+                    }
+
+                    data.frameTimer += animationSpeed;
+                    if (data.frameTimer > 1) {
+                        data.frameTimer = 0;
+                        data.frame = (data.frame + 1) % 4;
+                    }
+
+                    if (data.state === 'chasing') enemy.material.map = data.textures.walk;
+                    else if (data.state === 'attacking') enemy.material.map = data.textures.attack;
+                    else {
+                        enemy.material.map = data.textures.death;
+                        data.frame = 0; 
+                    }
+                }
+
+                const col = data.frame % 2; 
+                const row = Math.floor(data.frame / 2); 
+                enemy.material.map.offset.set(col * 0.5, 0.5 - (row * 0.5));
+                enemy.lookAt(camera.position);
+                
+                enemy.scale.x = data.facingRight ? -Math.abs(enemy.scale.x) : Math.abs(enemy.scale.x);
+            }
+
+            // --- TARGET LOCK MARKER UPDATE ---
+            if (lockedEnemy) {
+                if (!enemies.includes(lockedEnemy) || lockedEnemy.userData.state === 'dying') {
+                    lockedEnemy = null; targetMarker.visible = false;
+                } else {
+                    targetMarker.position.set(lockedEnemy.position.x, lockedEnemy.position.y + 4, lockedEnemy.position.z);
+                    targetMarker.rotation.y += 0.05;
+                }
+            }
+
+            // --- PLAYER MOVEMENT ---
+            if (Math.abs(moveData.x) > 0.1 || Math.abs(moveData.y) > 0.1) {
+                const joyVec = new THREE.Vector2(moveData.x, moveData.y).normalize();
+                let moveX = (-Math.sin(cameraAngle) * joyVec.y + Math.cos(cameraAngle) * joyVec.x) * moveSpeed;
+                let moveZ = (-Math.cos(cameraAngle) * joyVec.y - Math.sin(cameraAngle) * joyVec.x) * moveSpeed;
+                
+                lastAimDir.set(moveX, 0, moveZ).normalize();
+                let canMoveX = true, canMoveZ = true;
+
+                for (let i = 0; i < obstacles.length; i++) {
+                    const obs = obstacles[i];
+                    if (Math.sqrt(Math.pow((player.position.x + moveX) - obs.mesh.position.x, 2) + Math.pow(player.position.z - obs.mesh.position.z, 2)) < (obs.radius + playerRadius)) { canMoveX = false; }
+                    if (Math.sqrt(Math.pow(player.position.x - obs.mesh.position.x, 2) + Math.pow((player.position.z + moveZ) - obs.mesh.position.z, 2)) < (obs.radius + playerRadius)) { canMoveZ = false; }
+                }
+
+                if (canMoveX) player.position.x += moveX;
+                if (canMoveZ) player.position.z += moveZ;
+                if (currentState !== 'ATTACK' && currentState !== 'THROW') facingRight = (moveData.x > 0);
+            }
+
+            // --- PLAYER ANIMATION ---
+            if (currentState !== 'IDLE') {
+                frameTimer += animationSpeed;
+                if (frameTimer > 1) {
+                    frameTimer = 0; frame++;
+                    if (frame >= 4) {
+                        frame = 0;
+                        if (currentState === 'ATTACK' || currentState === 'THROW') {
+                            if (Math.abs(moveData.x) > 0.1 || Math.abs(moveData.y) > 0.1) { currentState = 'WALK'; player.material.map = texWalk; } 
+                            else { currentState = 'IDLE'; player.material.map = texIdle; }
+                        }
+                    }
+                }
+            } else { frame = 0; }
+
+            const col = frame % 2; 
+            const row = Math.floor(frame / 2); 
+            player.material.map.offset.set(col * 0.5, 0.5 - (row * 0.5));
+            player.lookAt(camera.position);
+            player.scale.x = facingRight ? Math.abs(player.scale.x) : -Math.abs(player.scale.x);
+
+            // --- DAGGER PHYSICS (Player) ---
+            for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+                const proj = activeProjectiles[i];
+                proj.position.add(proj.userData.velocity);
+                proj.lookAt(camera.position); 
+                
+                let destroyed = false;
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    if (enemy.userData.state === 'dying' || enemy.userData.state === 'spawning') continue;
+                    
+                    if (proj.position.distanceTo(enemy.position) < enemy.userData.radius) {
+                        enemy.userData.hp -= 35; 
+                        destroyed = true;
+                        
+                        enemy.material.color.setHex(0xff0000); 
+                        setTimeout(() => { if(enemy && enemy.material) enemy.material.color.setHex(0xffffff); }, 100);
+
+                        if (enemy.userData.hp <= 0) {
+                            enemy.userData.state = 'dying';
+                            enemy.userData.frame = 0;
+                            enemy.material.map = enemy.userData.textures.death; 
+                            
+                            const obsIdx = obstacles.findIndex(o => o.mesh === enemy);
+                            if (obsIdx > -1) obstacles.splice(obsIdx, 1);
+                        }
+                        break;
+                    }
+                }
+                if (destroyed || proj.position.distanceTo(player.position) > 150) { scene.remove(proj); activeProjectiles.splice(i, 1); }
+            }
+
+            // --- SNOWFLAKE PHYSICS (Enemies) ---
+            for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+                const flake = enemyProjectiles[i];
+                flake.position.add(flake.userData.velocity);
+                flake.lookAt(camera.position); 
+                
+                flake.rotation.z += 0.2;
+                
+                if (flake.position.distanceTo(player.position) < playerRadius + 1) {
+                    playerHP = Math.max(0, playerHP - 10);
+                    document.getElementById('hp-bar').style.width = playerHP + '%';
+                    scene.remove(flake);
+                    enemyProjectiles.splice(i, 1);
+                } else if (flake.position.distanceTo(player.position) > 150) {
+                    scene.remove(flake);
+                    enemyProjectiles.splice(i, 1);
+                }
+            }
+
+            // --- GRAVITY & SNOW ---
+            velocityY += gravity;
+            player.position.y += velocityY;
+            floorRay.set(new THREE.Vector3(player.position.x, player.position.y + 10, player.position.z), new THREE.Vector3(0, -1, 0));
+            const groundHits = floorRay.intersectObjects(floorColliders); 
+            if (groundHits.length > 0 && groundHits[0].distance < (10 + playerHalfHeight + 2) && velocityY <= 0) { player.position.y = groundHits[0].point.y + playerHalfHeight; velocityY = 0; isJumping = false; }
+
+            const positions = snowParticles.geometry.attributes.position.array;
+            for (let i = 0; i < snowCount; i++) {
+                positions[i * 3 + 1] -= snowSpeeds[i]; positions[i * 3] -= 0.1; 
+                if (positions[i * 3 + 1] < 0) { positions[i * 3 + 1] = 100; positions[i * 3] = player.position.x + (Math.random() - 0.5) * 200; positions[i * 3 + 2] = player.position.z + (Math.random() - 0.5) * 200; }
+            }
+            snowParticles.geometry.attributes.position.needsUpdate = true;
+            snowParticles.position.set(player.position.x, 0, player.position.z);
+
+            time += 0.05;
+            arrowGroup.position.set(player.position.x, player.position.y + 12 + Math.sin(time) * 1.5, player.position.z);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            cameraTarget.set(player.position.x + Math.sin(cameraAngle) * 55, player.position.y + 15, player.position.z + Math.cos(cameraAngle) * 55);
+            camera.position.lerp(cameraTarget, 0.15); 
+            camera.lookAt(player.position.x, player.position.y + 5, player.position.z);
+            renderer.render(scene, camera);
+        }                            
+        animate();
+    </script>
+</body>
+</html>

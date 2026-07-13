@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solo Leveling: Level 10 Boss</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; background: #050102; touch-action: none; font-family: monospace; }
+        
+        /* Level UI */
+        #ui { position: absolute; top: 110px; width: 100%; text-align: center; color: #ff0044; z-index: 10; pointer-events: none; text-shadow: 0 0 10px #ff0044; }
+        h1 { margin: 0; font-size: 20px; letter-spacing: 3px; }
+        p { margin: 5px 0 0 0; font-size: 13px; color: #ffaa88; font-weight: bold; }
+        
+        /* Player Status Bars (Copied from your main game) */
+        .status-container { position: absolute; top: 20px; left: 20px; z-index: 10; width: 150px; }
+        .bar-bg { width: 100%; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #444; margin-bottom: 5px; border-radius: 4px; overflow: hidden; }
+        #hp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #00ff00,  #008800); transition: width 0.3s; }
+        #mp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #00aaff, #0044ff); transition: width 0.3s; }
+
+        /* Boss Status Bar */
+        .boss-status-container { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 60%; max-width: 500px; z-index: 10; text-align: center; }
+        .boss-title { color: #ff0044; font-family: 'serif', 'Courier New'; font-size: 16px; font-weight: bold; letter-spacing: 4px; margin-bottom: 8px; text-shadow: 0 0 10px #ff0044; text-transform: uppercase; }
+        .boss-bar-bg { width: 100%; height: 16px; background: rgba(0,0,0,0.8); border: 2px solid #ff0044; border-radius: 4px; overflow: hidden; box-shadow: 0 0 15px rgba(255, 0, 68, 0.4); }
+        #boss-hp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #ff0000, #ff0044); transition: width 0.2s; }
+        
+        #joystick-zone { position: absolute; bottom: 40px; left: 30px; width: 120px; height: 120px; z-index: 20; touch-action: none; }
+        
+        #attack-btn { 
+            position: absolute; bottom: 50px; right: 30px; width: 80px; height: 80px; 
+            border-radius: 50%; background: rgba(0, 255, 255, 0.3); border: 2px solid #00ffff;
+            color: white; font-weight: bold; font-size: 16px; z-index: 20; 
+            box-shadow: 0 0 15px #00ffff; user-select: none; touch-action: manipulation;
+        }
+        #attack-btn:active { background: rgba(0, 255, 255, 0.8); transform: scale(0.9); }
+        /* End Screen UI */
+        #end-screen { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 0, 0, 0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(8px); border: 4px solid rgba(255, 0, 0, 0.2); box-sizing: border-box; }
+        #end-title { color: #ff0000; font-family: 'serif', 'Courier New'; font-size: 32px; letter-spacing: 5px; text-transform: uppercase; margin: 0; text-shadow: 0 0 20px #ff0000; animation: pulse 2s infinite; }
+        #end-msg { color: #888; font-family: monospace; margin-bottom: 30px; font-size: 14px; text-align: center; max-width: 80%; }
+        #restart-btn { padding: 12px 40px; background: #000; border: 1px solid #ff0000; color: #ff0000; font-family: monospace; font-weight: bold; cursor: pointer; box-shadow: 0 0 15px rgba(255, 0, 0, 0.4); transition: 0.3s; }
+        #restart-btn:active { background: #ff0000; color: #000; }
+        @keyframes pulse { 0% { opacity: 0.8; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0.8; transform: scale(1); } }               
+    </style>
+</head>
+<body>
+    <div class="status-container">
+        <div class="bar-bg"><div id="hp-bar"></div></div>
+        <div class="bar-bg"><div id="mp-bar"></div></div>
+    </div>
+
+    <div class="boss-status-container">
+        <div class="boss-title">BOSS HP</div>
+        <div class="boss-bar-bg"><div id="boss-hp-bar"></div></div>
+    </div>
+
+    <div id="ui">
+        <h1>LEVEL 10: MONARCH'S RITUAL</h1>
+        <p>Boss Fire Rate: <span id="rof-display">2.0s</span></p>
+    </div>
+
+    <div id="joystick-zone"></div>
+        <div id="end-screen">
+        <h1 id="end-title">YOU HAVE DIED</h1>
+        <p id="end-msg">The Monarch's Ritual has failed.</p>
+        <button id="restart-btn" onclick="location.reload()">TRY AGAIN</button>
+    </div>
+    
+    <button id="attack-btn">SLASH</button>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.163.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.163.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- AUDIO SETUP ---
+        const walkSFX = new Audio('walk.mp3');
+        walkSFX.loop = true; 
+        walkSFX.volume = 0.5; 
+
+        const slashSFX = new Audio('slash.mp3');
+        slashSFX.volume = 0.8;
+
+        const startSFX = new Audio('level10_start.mp3');
+        startSFX.volume = 0.8;
+
+        const bossDamageSFX = new Audio('snakeboss_damage.mp3');
+        bossDamageSFX.volume = 1.0;
+
+        let hasStartedAudio = false;
+        const playStartAudio = () => {
+            if (!hasStartedAudio) {
+                startSFX.play().catch(e => console.log("Waiting for user interaction to play audio."));
+                hasStartedAudio = true;
+            }
+        };
+        playStartAudio();
+        document.body.addEventListener('touchstart', playStartAudio, { once: true });
+        
+        // --- GAME OVER STATE & UI FUNCTION ---
+        let isGameOver = false;
+        let isSnakeDead = false;
+        let snakeFadeOpacity = 1.0;
+
+        function showEndScreen(title, msg, isVictory) {
+            isGameOver = true;
+            const endScreen = document.getElementById('end-screen');
+            const endTitle = document.getElementById('end-title');
+            const restartBtn = document.getElementById('restart-btn');
+
+            endTitle.innerText = title;
+            document.getElementById('end-msg').innerText = msg;
+            
+            if (isVictory) {
+                endTitle.style.color = "#00ff00";
+                endTitle.style.textShadow = "0 0 20px #00ff00";
+                endScreen.style.borderColor = "rgba(0, 255, 0, 0.2)";
+                restartBtn.style.borderColor = "#00ff00";
+                restartBtn.style.color = "#00ff00";
+                restartBtn.style.boxShadow = "0 0 15px rgba(0, 255, 0, 0.4)";
+                restartBtn.innerText = "ARISE (PLAY AGAIN)";
+            }
+            
+            endScreen.style.display = 'flex';
+        }
+                
+
+        // 1. SCENE & LIGHTING SETUP
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050102); 
+        scene.fog = new THREE.FogExp2(0x050102, 0.006);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.8)); 
+        const overheadLight = new THREE.DirectionalLight(0xffffff, 2.5);
+        overheadLight.position.set(0, 300, 0); 
+        overheadLight.target.position.set(0, 0, 0); 
+        scene.add(overheadLight);
+        scene.add(overheadLight.target); 
+
+        const centerLight = new THREE.PointLight(0xff0022, 100, 250);
+        centerLight.position.set(0, 15, 0);
+        scene.add(centerLight);
+
+        // 2. PERFECTLY FLAT RITUAL ARENA
+        const arenaGroup = new THREE.Group();
+        scene.add(arenaGroup);
+
+        const floorGeo = new THREE.CircleGeometry(100, 64);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x111116, roughness: 0.9, metalness: 0.1 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        arenaGroup.add(floor);
+
+        const ringGeo = new THREE.RingGeometry(85, 88, 64);
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0xff0044, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(ringGeo, glowMat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.05; 
+        arenaGroup.add(ring);
+
+        const starGeo = new THREE.CircleGeometry(80, 5); 
+        const edges = new THREE.EdgesGeometry(starGeo);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xff0044 });
+        
+        const star1 = new THREE.LineSegments(edges, lineMat);
+        star1.rotation.x = -Math.PI / 2;
+        star1.position.y = 0.06;
+        arenaGroup.add(star1);
+
+        const star2 = star1.clone();
+        star2.rotation.z = Math.PI; 
+        arenaGroup.add(star2);
+
+        const particleGeo = new THREE.BufferGeometry();
+        const particleCount = 150;
+        const posArray = new Float32Array(particleCount * 3);
+        const speeds = [];
+        for(let i = 0; i < particleCount * 3; i += 3) {
+            posArray[i] = (Math.random() - 0.5) * 160;     
+            posArray[i+1] = Math.random() * 50;            
+            posArray[i+2] = (Math.random() - 0.5) * 160;   
+            speeds.push(Math.random() * 0.05 + 0.02);      
+        }
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const particleMat = new THREE.PointsMaterial({
+            size: 1.5, color: 0xff5522, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending
+        });
+        const particles = new THREE.Points(particleGeo, particleMat);
+        scene.add(particles);
+
+        // 3. JINWOO 2D SPRITE & ATTACK IMAGES SETUP
+        const textureLoader = new THREE.TextureLoader();
+        const jinwooTexture = textureLoader.load('jinwoo_sprite.png');
+        jinwooTexture.colorSpace = THREE.SRGBColorSpace;
+        jinwooTexture.repeat.set(1/3, 1/3); 
+        jinwooTexture.offset.set(0, 2/3); 
+        jinwooTexture.magFilter = THREE.NearestFilter; 
+
+        const jinwooMat = new THREE.MeshBasicMaterial({ map: jinwooTexture, color: 0xffffff, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+        const jinwooGeo = new THREE.PlaneGeometry(20, 20);
+        jinwooGeo.translate(0, 10, 0); 
+        const jinwoo = new THREE.Mesh(jinwooGeo, jinwooMat);
+        jinwoo.position.set(0, 0, 0); 
+        scene.add(jinwoo);
+
+        let playerAction = 'stand';
+        let frameTimer = 0;
+        let currentFrame = 0;
+        let facingRight = true;
+        let jinwooFacingDir = new THREE.Vector3(1, 0, 0); 
+        let jinwooProjectiles = []; 
+        
+        // --- UPDATED JINWOO HEALTH & MANA SYSTEM ---
+        let jinwooHP = 100;
+        let mp = 300;
+        const maxMp = 300;
+        let jinwooFlashTimer = 0;
+
+        const slashTexture = textureLoader.load('slash_attack.png');
+        slashTexture.colorSpace = THREE.SRGBColorSpace;
+        const slashMat = new THREE.MeshBasicMaterial({ map: slashTexture, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+
+        const poisonTexture = textureLoader.load('poison_attack.png');
+        poisonTexture.colorSpace = THREE.SRGBColorSpace;
+        const poisonMat = new THREE.MeshBasicMaterial({ map: poisonTexture, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+
+        // 4. 3D SNAKE BOSS SETUP
+        let snakeBoss = new THREE.Group(); 
+        scene.add(snakeBoss);
+
+        let snakeMixer = null;
+        let snakeFireRate = 2.0; 
+        let fireCooldown = 1.0;
+        let poisonProjectiles = [];
+        let snakeHP = 100; 
+        let snakeFlashTimer = 0;
+
+        const snakeYOffset = 4.0; 
+        const coilRadius = 35; 
+
+        const gltfLoader = new GLTFLoader();
+        gltfLoader.load('snake_boss/scene.gltf', (gltf) => {
+            const internalModel = gltf.scene;
+            internalModel.scale.set(10, 10, 10); 
+            internalModel.rotation.y = 0; 
+            
+            internalModel.traverse((child) => {
+                if (child.isMesh && child.material.opacity !== undefined && child.material.opacity < 1) {
+                    child.visible = false; 
+                }
+            });
+
+            snakeBoss.add(internalModel);
+            snakeBoss.position.set(0, 50, -120); 
+
+            if (gltf.animations && gltf.animations.length > 0) {
+                snakeMixer = new THREE.AnimationMixer(internalModel);
+                const action = snakeMixer.clipAction(gltf.animations[0]); 
+                action.play();
+                action.timeScale = 0.8; 
+            }
+        });
+        
+        // 5. CONTROLS SETUP
+        let moveData = { x: 0, y: 0 };
+        nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '80px', bottom: '80px' } })
+            .on('move', (e, d) => { moveData = d.vector; })
+            .on('end', () => moveData = { x: 0, y: 0 });
+
+        document.getElementById('attack-btn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (playerAction !== 'attack' && jinwooHP > 0 && mp >= 10) {
+                playerAction = 'attack';
+                currentFrame = 0; 
+                
+                mp -= 10;
+                document.getElementById('mp-bar').style.width = (mp / maxMp * 100) + "%";
+
+                slashSFX.currentTime = 0;
+                slashSFX.play().catch(e => {});
+                
+                const slashGeo = new THREE.PlaneGeometry(20, 20);
+                slashGeo.rotateY(Math.PI / 2);
+                
+                const slash = new THREE.Mesh(slashGeo, slashMat);
+                slash.position.set(jinwoo.position.x, 10, jinwoo.position.z);
+                
+                const targetPoint = slash.position.clone().add(jinwooFacingDir);
+                slash.lookAt(targetPoint);
+                
+                slash.userData = { velocity: jinwooFacingDir.clone().multiplyScalar(120) };
+                scene.add(slash);
+                jinwooProjectiles.push(slash);
+            }
+        });
+
+        function firePoison() {
+            if (!snakeBoss.children.length) return;
+            
+            // --- NEW: DYNAMIC CLUSTER BOMBS BASED ON BOSS HEALTH ---
+            let bombsToDrop = 1;
+            if (snakeHP <= 70) bombsToDrop = 2; // Phase 2: Double drop
+            if (snakeHP <= 40) bombsToDrop = 3; // Phase 3: Triple drop
+            if (snakeHP <= 15) bombsToDrop = 5; // Phase 4: Bullet Hell Mode!
+
+            for (let i = 0; i < bombsToDrop; i++) {
+                const poisonGeo = new THREE.PlaneGeometry(5, 5);
+                const poison = new THREE.Mesh(poisonGeo, poisonMat);
+                
+                // Add spread so they don't spawn exactly on top of each other
+                const offsetX = (Math.random() - 0.5) * 30;
+                const offsetZ = (Math.random() - 0.5) * 30;
+
+                // --- NEW: Spawning from high up in the sky (Y = 100) ---
+                poison.position.set(snakeBoss.position.x + offsetX, snakeBoss.position.y + 100, snakeBoss.position.z + offsetZ);
+                
+                const r = coilRadius * Math.random() * 0.9; 
+                const theta = Math.random() * Math.PI * 2;
+                const targetPos = new THREE.Vector3(
+                    jinwoo.position.x + r * Math.cos(theta),
+                    0, 
+                    jinwoo.position.z + r * Math.sin(theta)
+                );
+
+                poison.userData = { velocity: new THREE.Vector3().subVectors(targetPos, poison.position).normalize().multiplyScalar(50) };
+                scene.add(poison);
+                poisonProjectiles.push(poison);
+            }
+        }
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (snakeMixer) snakeMixer.update(delta);
+
+            star1.rotation.z += 0.5 * delta;
+            star2.rotation.z -= 0.5 * delta;
+
+            // MP Regeneration
+            if (mp < maxMp && jinwooHP > 0) {
+                mp += 0.2; 
+                if (mp > maxMp) mp = maxMp;
+                document.getElementById('mp-bar').style.width = (mp / maxMp * 100) + "%";
+            }
+
+            const positions = particles.geometry.attributes.position.array;
+            for(let i = 1; i < particleCount * 3; i += 3) {
+                positions[i] += speeds[Math.floor(i/3)];
+                if (positions[i] > 50) positions[i] = 0; 
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            if (playerAction !== 'attack' && jinwooHP > 0) {
+                if (Math.abs(moveData.x) > 0.1 || Math.abs(moveData.y) > 0.1) {
+                    playerAction = 'walk';
+                    jinwoo.position.x += moveData.x * 0.8;
+                    jinwoo.position.z -= moveData.y * 0.8;
+                    facingRight = moveData.x > 0;
+                    
+                    jinwooFacingDir.set(moveData.x, 0, -moveData.y).normalize();
+                    if (jinwoo.position.length() > 72) jinwoo.position.setLength(72);
+                    
+                    if (walkSFX.paused) walkSFX.play().catch(e => {});
+                } else {
+                    playerAction = 'stand';
+                    if (!walkSFX.paused) { walkSFX.pause(); walkSFX.currentTime = 0; }
+                }
+            } else if (jinwooHP <= 0) {
+                if (!walkSFX.paused) walkSFX.pause(); 
+            }
+
+            jinwoo.lookAt(camera.position);
+            jinwoo.scale.x = facingRight ? Math.abs(jinwoo.scale.x) : -Math.abs(jinwoo.scale.x);
+
+            if (jinwooHP > 0) {
+                frameTimer += delta;
+                if (frameTimer > 0.12) { 
+                    frameTimer = 0;
+                    if (playerAction === 'stand') jinwooTexture.offset.set(0, 2/3); 
+                    else if (playerAction === 'walk') {
+                        currentFrame = (currentFrame + 1) % 3;
+                        jinwooTexture.offset.set(currentFrame * (1/3), 1/3); 
+                    } else if (playerAction === 'attack') {
+                        currentFrame++;
+                        if (currentFrame > 2) { playerAction = 'stand'; currentFrame = 0; }
+                        jinwooTexture.offset.set(currentFrame * (1/3), 0); 
+                    }
+                }
+            }
+
+            if (jinwooFlashTimer > 0) {
+                jinwooFlashTimer -= delta;
+                if (jinwooFlashTimer <= 0) {
+                    jinwooMat.color.setHex(0xffffff); 
+                }
+            }
+
+            // CLEANED UP: Only one projectile and collision check loop!
+            for (let i = jinwooProjectiles.length - 1; i >= 0; i--) {
+                let slash = jinwooProjectiles[i];
+                slash.position.addScaledVector(slash.userData.velocity, delta);
+                
+                if (snakeBoss.children.length > 0) {
+                    const distToSnakeCenter = slash.position.distanceTo(snakeBoss.position);
+                    
+                    if (distToSnakeCenter > 32 && distToSnakeCenter < 40) {
+                        scene.remove(slash);
+                        jinwooProjectiles.splice(i, 1);
+                        
+            if (snakeHP > 0 && !isSnakeDead) {
+                snakeHP -= 1; 
+                
+                if (snakeHP <= 0) {
+                    snakeHP = 0;
+                    isSnakeDead = true;
+                    
+                    // Enable transparency so the snake can fade away
+                    snakeBoss.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            child.material.transparent = true;
+                            child.material.needsUpdate = true;
+                        }
+                    });
+                }                                       
+                            
+                            bossDamageSFX.currentTime = 0;
+                            bossDamageSFX.play().catch(e => {});
+
+                            snakeFlashTimer = 0.15;
+                            snakeBoss.traverse((child) => {
+                                if (child.isMesh && child.material) {
+                                    child.material.emissive = new THREE.Color(0xff0000); 
+                                    child.material.emissiveIntensity = 2.0;
+                                }
+                            });
+                            
+                            document.getElementById('boss-hp-bar').style.width = snakeHP + "%";
+                            
+                            snakeFireRate = Math.max(0.3, snakeFireRate - 0.017); 
+                            document.getElementById('rof-display').innerText = snakeFireRate.toFixed(2) + "s";
+                            document.getElementById('rof-display').style.color = "#ff0000";
+                        }
+                    }
+                }
+                
+                if (slash.position.length() > 150) {
+                    scene.remove(slash);
+                    jinwooProjectiles.splice(i, 1);
+                }
+            }
+
+            if (snakeFlashTimer > 0) {
+                snakeFlashTimer -= delta;
+                if (snakeFlashTimer <= 0) {
+                    snakeBoss.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            child.material.emissive = new THREE.Color(0x000000); 
+                            child.material.emissiveIntensity = 0.0;
+                        }
+                    });
+                }
+            }
+
+            if (snakeBoss.children.length > 0) {
+                const targetPos = new THREE.Vector3(jinwoo.position.x, snakeYOffset, jinwoo.position.z);
+                snakeBoss.position.lerp(targetPos, delta * 2.5);
+                snakeBoss.rotation.y += 0.5 * delta;
+
+                fireCooldown -= delta;
+                if (fireCooldown <= 0 && snakeHP > 0 && jinwooHP > 0) { 
+                    firePoison();
+                    fireCooldown = snakeFireRate;
+                }
+            }
+
+            for (let i = poisonProjectiles.length - 1; i >= 0; i--) {
+                let p = poisonProjectiles[i];
+                p.position.addScaledVector(p.userData.velocity, delta);
+                p.lookAt(camera.position);
+                
+                const jinwooChestPos = new THREE.Vector3(jinwoo.position.x, 6, jinwoo.position.z);
+                if (p.position.distanceTo(jinwooChestPos) < 7) {
+                    scene.remove(p);
+                    poisonProjectiles.splice(i, 1);
+                    
+                    if (jinwooHP > 0) {
+                        jinwooHP -= 10; 
+                        if (jinwooHP <= 0) {
+                            jinwooHP = 0;
+                            if (!isGameOver) showEndScreen("YOU HAVE DIED", "The Monarch's Ritual has failed.", false);
+                        }
+                        
+                        document.getElementById('hp-bar').style.width = jinwooHP + "%";
+
+                        jinwooMat.color.setHex(0xff0000);
+                        jinwooFlashTimer = 0.2;
+                    }
+                                        
+                    continue; 
+                }
+
+                if (p.position.y <= 0) {
+                    scene.remove(p);
+                    poisonProjectiles.splice(i, 1);
+                }
+            }
+
+            // --- SNAKE DEATH FADE ANIMATION ---
+            if (isSnakeDead && snakeFadeOpacity > 0) {
+                snakeFadeOpacity -= delta * 0.5; // Fades out slowly over 2 seconds
+                
+                if (snakeFadeOpacity <= 0) {
+                    snakeFadeOpacity = 0;
+                    if (!isGameOver) showEndScreen("RITUAL COMPLETE", "You have become the Shadow Monarch.", true);
+                }
+                
+                snakeBoss.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.opacity = snakeFadeOpacity;
+                    }
+                });
+            }
+
+            camera.position.x = THREE.MathUtils.lerp(camera.position.x, jinwoo.position.x, 0.1);                       
+            camera.position.z = THREE.MathUtils.lerp(camera.position.z, jinwoo.position.z + 85, 0.1); 
+            camera.position.y = 50; 
+            camera.lookAt(jinwoo.position.x, 5, jinwoo.position.z - 5);
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
+        

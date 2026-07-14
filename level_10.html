@@ -32,6 +32,7 @@
             box-shadow: 0 0 15px #00ffff; user-select: none; touch-action: manipulation;
         }
         #attack-btn:active { background: rgba(0, 255, 255, 0.8); transform: scale(0.9); }
+        
         /* End Screen UI */
         #end-screen { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 0, 0, 0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(8px); border: 4px solid rgba(255, 0, 0, 0.2); box-sizing: border-box; }
         #end-title { color: #ff0000; font-family: 'serif', 'Courier New'; font-size: 32px; letter-spacing: 5px; text-transform: uppercase; margin: 0; text-shadow: 0 0 20px #ff0000; animation: pulse 2s infinite; }
@@ -39,6 +40,17 @@
         #restart-btn { padding: 12px 40px; background: #000; border: 1px solid #ff0000; color: #ff0000; font-family: monospace; font-weight: bold; cursor: pointer; box-shadow: 0 0 15px rgba(255, 0, 0, 0.4); transition: 0.3s; }
         #restart-btn:active { background: #ff0000; color: #000; }
         @keyframes pulse { 0% { opacity: 0.8; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0.8; transform: scale(1); } }               
+        
+        /* Fullscreen Button */
+        #fullscreen-btn {
+            position: absolute; top: 20px; right: 20px; z-index: 100;
+            background: rgba(0, 0, 0, 0.6); border: 2px solid #ff0044;
+            color: #ff0044; padding: 8px 12px; font-family: monospace;
+            font-weight: bold; font-size: 14px; cursor: pointer;
+            border-radius: 4px; box-shadow: 0 0 10px rgba(255, 0, 68, 0.4);
+            user-select: none; touch-action: manipulation;
+        }
+        #fullscreen-btn:active { background: rgba(255, 0, 68, 0.3); transform: scale(0.95); }
     </style>
 </head>
 <body>
@@ -57,6 +69,8 @@
         <p>Boss Fire Rate: <span id="rof-display">2.0s</span></p>
     </div>
 
+    <button id="fullscreen-btn">[&nbsp;&nbsp;]</button>
+
     <div id="joystick-zone"></div>
         <div id="end-screen">
         <h1 id="end-title">YOU HAVE DIED</h1>
@@ -74,6 +88,28 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- FULLSCREEN LOGIC ---
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                // Enter fullscreen
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                } else if (document.documentElement.webkitRequestFullscreen) { /* Safari */
+                    document.documentElement.webkitRequestFullscreen();
+                }
+                fullscreenBtn.innerText = "><"; // Change icon to exit
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) { /* Safari */
+                    document.webkitExitFullscreen();
+                }
+                fullscreenBtn.innerText = "[  ]"; // Change icon to enter
+            }
+        });
 
         // --- AUDIO SETUP ---
         const walkSFX = new Audio('walk.mp3');
@@ -427,7 +463,7 @@
                     snakeHP = 0;
                     isSnakeDead = true;
                     
-                    // Enable transparency so the snake can fade away
+         // Enable transparency so the snake can fade away
                     snakeBoss.traverse((child) => {
                         if (child.isMesh && child.material) {
                             child.material.transparent = true;
@@ -551,4 +587,3 @@
     </script>
 </body>
 </html>
-        

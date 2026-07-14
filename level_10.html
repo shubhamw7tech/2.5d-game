@@ -4,6 +4,34 @@
     <title>Solo Leveling: Level 10 Boss</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
+    
+    /* --- LOADING SCREEN --- */
+#loading-screen {
+    position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: #000000; z-index: 9999; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #00ffff;
+    font-family: monospace; font-size: 20px; font-weight: bold;
+    transition: opacity 0.5s ease;
+}
+#loading-bar-container {
+    width: 60%; height: 20px; border: 2px solid #00ffff; margin-top: 20px;
+    border-radius: 10px; overflow: hidden; background: #222;
+}
+#loading-bar { width: 0%; height: 100%; background: #00ffff; transition: width 0.1s; }
+
+/* --- ZOOM CONTROLS --- */
+#zoom-controls {
+    position: absolute; top: 80px; right: 20px; z-index: 100;
+    display: flex; flex-direction: column; gap: 10px;
+}
+.zoom-btn {
+    width: 45px; height: 45px; background: rgba(0, 0, 0, 0.6);
+    border: 2px solid #00ffff; color: #00ffff; border-radius: 50%;
+    font-size: 24px; font-weight: bold; display: flex; align-items: center;
+    justify-content: center; user-select: none; touch-action: manipulation;
+}
+.zoom-btn:active { background: rgba(0, 255, 255, 0.3); transform: scale(0.9); }
+
         body { margin: 0; overflow: hidden; background: #050102; touch-action: none; font-family: monospace; }
         
         /* Level UI */
@@ -70,6 +98,17 @@
     </div>
 
     <button id="fullscreen-btn">[&nbsp;&nbsp;]</button>
+    
+    <div id="loading-screen">
+    <div id="loading-text">LOADING ASSETS... 0%</div>
+    <div id="loading-bar-container"><div id="loading-bar"></div></div>
+</div>
+
+<div id="zoom-controls">
+    <div id="zoom-in" class="zoom-btn">+</div>
+    <div id="zoom-out" class="zoom-btn">-</div>
+</div>
+
 
     <div id="joystick-zone"></div>
         <div id="end-screen">
@@ -88,6 +127,26 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        
+        // --- LOADING MANAGER ---
+const loadingScreen = document.getElementById('loading-screen');
+const loadingBar = document.getElementById('loading-bar');
+const loadingText = document.getElementById('loading-text');
+
+THREE.DefaultLoadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
+    const progress = (itemsLoaded / itemsTotal) * 100;
+    loadingBar.style.width = progress + '%';
+    loadingText.innerText = `LOADING ASSETS... ${Math.floor(progress)}%`;
+};
+
+THREE.DefaultLoadingManager.onLoad = function() {
+    // When 100% is reached, fade out the black screen
+    loadingScreen.style.opacity = '0';
+    setTimeout(() => {
+        loadingScreen.style.display = 'none';
+    }, 500); // Wait for the fade CSS to finish before removing it
+};
+
 
         // --- FULLSCREEN LOGIC ---
         const fullscreenBtn = document.getElementById('fullscreen-btn');
@@ -307,11 +366,28 @@
             }
         });
         
+        
         // 5. CONTROLS SETUP
         let moveData = { x: 0, y: 0 };
+        let currentZoom = 55; // Default camera distance
+const MIN_ZOOM = 30;  // Closest it can get
+const MAX_ZOOM = 90;  // Furthest it can go
+
         nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '80px', bottom: '80px' } })
             .on('move', (e, d) => { moveData = d.vector; })
             .on('end', () => moveData = { x: 0, y: 0 });
+            
+            // --- ZOOM BUTTON LOGIC ---
+document.getElementById('zoom-in').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    currentZoom = Math.max(MIN_ZOOM, currentZoom - 10);
+});
+
+document.getElementById('zoom-out').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    currentZoom = Math.min(MAX_ZOOM, currentZoom + 10);
+});
+
 
         document.getElementById('attack-btn').addEventListener('touchstart', (e) => {
             e.preventDefault();
@@ -571,7 +647,7 @@
             }
 
             camera.position.x = THREE.MathUtils.lerp(camera.position.x, jinwoo.position.x, 0.1);                       
-            camera.position.z = THREE.MathUtils.lerp(camera.position.z, jinwoo.position.z + 85, 0.1); 
+            camera.position.z = THREE.MathUtils.lerp(camera.position.z, jinwoo.position.z + currentZoom, 0.1); 
             camera.position.y = 50; 
             camera.lookAt(jinwoo.position.x, 5, jinwoo.position.z - 5);
 

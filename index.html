@@ -4,41 +4,6 @@
 	<title>Solo Leveling: Shadow Monarch Baseline</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 	<style>
-		/* --- LOADING SCREEN --- */
-		#loading-screen {
-			position: absolute;
-			top: 0;
-			left: 0;
-			width: 100vw;
-			height: 100vh;
-			background: #000000;
-			z-index: 9999;
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			justify-content: center;
-			color: #00ffff;
-			font-family: monospace;
-			font-size: 20px;
-			font-weight: bold;
-			transition: opacity 0.5s ease;
-		}
-		#loading-bar-container {
-			width: 60%;
-			height: 20px;
-			border: 2px solid #00ffff;
-			margin-top: 20px;
-			border-radius: 10px;
-			overflow: hidden;
-			background: #222;
-		}
-		#loading-bar {
-			width: 0%;
-			height: 100%;
-			background: #00ffff;
-			transition: width 0.1s;
-		}
-
 		/* --- ZOOM CONTROLS --- */
 		#zoom-controls {
 			position: absolute;
@@ -287,9 +252,29 @@
 			background: #00ff00;
 			color: #000;
 		}
+		
+		/* --- GLOBAL LOADING SCREEN --- */
+#loading-screen {
+    position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: #050102; z-index: 9999; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #ff0044;
+    font-family: monospace; font-size: 20px; font-weight: bold;
+    transition: opacity 0.5s ease;
+}
+#loading-bar-container {
+    width: 60%; height: 20px; border: 2px solid #ff0044; margin-top: 20px;
+    border-radius: 10px; overflow: hidden; background: #111; box-shadow: 0 0 15px rgba(255, 0, 68, 0.4);
+}
+#loading-bar { width: 0%; height: 100%; background: linear-gradient(to right, #ff0000, #ff0044); transition: width 0.1s; }
+
 	</style>
 </head>
 <body>
+	<div id="loading-screen">
+    <div id="loading-text">AWAKENING SYSTEM... 0%</div>
+    <div id="loading-bar-container"><div id="loading-bar"></div></div>
+</div>
+
 	<div id="ui">
 		LEVEL: 1<br>STATUS: S_RANK_VIVID<br><span id="kill-count">GOBLINS: 0/10</span>
 	</div>
@@ -307,15 +292,6 @@
 
 	<button id="skip-btn" onclick="devSkipLevel()">[ DEV: SKIP ]</button>
 	<button id="fullscreen-btn" onclick="toggleFullscreen()">[ FULLSCREEN ]</button>
-
-	<div id="loading-screen">
-		<div id="loading-text">
-			LOADING ASSETS... 0%
-		</div>
-		<div id="loading-bar-container">
-			<div id="loading-bar"></div>
-		</div>
-	</div>
 
 	<div id="zoom-controls">
 		<div id="zoom-in" class="zoom-btn">
@@ -368,25 +344,29 @@
 		import {
 			GLTFLoader
 		} from 'three/addons/loaders/GLTFLoader.js';
+		
+		// --- GLOBAL ASSET LOADING MANAGER ---
+const loadingScreen = document.getElementById('loading-screen');
+const loadingBar = document.getElementById('loading-bar');
+const loadingText = document.getElementById('loading-text');
 
-		// --- LOADING MANAGER ---
-		const loadingScreen = document.getElementById('loading-screen');
-		const loadingBar = document.getElementById('loading-bar');
-		const loadingText = document.getElementById('loading-text');
+THREE.DefaultLoadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
+    const progress = (itemsLoaded / itemsTotal) * 100;
+    loadingBar.style.width = progress + '%';
+    loadingText.innerText = `AWAKENING SYSTEM... ${Math.floor(progress)}%`;
+};
 
-		THREE.DefaultLoadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
-			const progress = (itemsLoaded / itemsTotal) * 100;
-			loadingBar.style.width = progress + '%';
-			loadingText.innerText = `LOADING ASSETS... ${Math.floor(progress)}%`;
-		};
+THREE.DefaultLoadingManager.onLoad = function() {
+    // When 100% of all assets for Levels 1-9 are loaded, fade out
+    loadingScreen.style.opacity = '0';
+    setTimeout(() => {
+        loadingScreen.style.display = 'none';
+    }, 500); 
+};
 
-		THREE.DefaultLoadingManager.onLoad = function() {
-			// When 100% is reached, fade out the black screen
-			loadingScreen.style.opacity = '0';
-			setTimeout(() => {
-				loadingScreen.style.display = 'none';
-			}, 500); // Wait for the fade CSS to finish before removing it
-		};
+THREE.DefaultLoadingManager.onError = function(url) {
+    console.error('There was an error loading ' + url);
+};
 
 		const scene = new THREE.Scene();
 		const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 5000);

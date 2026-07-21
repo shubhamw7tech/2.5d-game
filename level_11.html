@@ -4,6 +4,47 @@
     <title>Solo Leveling: The Frost Peak</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
+    
+    /* --- LOADING SCREEN --- */
+#loading-screen {
+    position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: #000000; z-index: 9999; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #00ffff;
+    font-family: monospace; font-size: 20px; font-weight: bold;
+    transition: opacity 0.5s ease;
+}
+#loading-bar-container {
+    width: 60%; height: 20px; border: 2px solid #00ffff; margin-top: 20px;
+    border-radius: 10px; overflow: hidden; background: #222;
+}
+#loading-bar { width: 0%; height: 100%; background: #00ffff; transition: width 0.1s; }
+
+/* --- MENU SCREENS (WIN/LOSS) --- */
+.screen-overlay {
+    position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.85); z-index: 10000; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; font-family: monospace; font-weight: bold;
+    backdrop-filter: blur(5px);
+}
+.menu-btn {
+    background: rgba(255, 255, 255, 0.1); border: 2px solid #fff; color: #fff; 
+    padding: 15px 30px; font-size: 20px; cursor: pointer; text-transform: uppercase;
+    border-radius: 5px; margin-top: 20px; touch-action: manipulation;
+}
+.menu-btn:active { background: rgba(255, 255, 255, 0.3); transform: scale(0.95); }
+
+/* --- ZOOM SLIDER --- */
+#zoom-container {
+    position: absolute; top: 120px; right: 20px; z-index: 100;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background: rgba(0, 0, 0, 0.6); padding: 12px 8px; border: 2px solid #00ffff; border-radius: 8px;
+}
+#zoom-label { color: #00ffff; font-family: monospace; font-size: 14px; font-weight: bold; user-select: none; }
+#zoom-slider {
+    -webkit-appearance: slider-vertical;
+    width: 15px; height: 120px; cursor: pointer;
+}
+
         body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: 'Courier New', monospace; }
         
         #ui { position: absolute; top: 20px; left: 20px; color: #ffffff; text-shadow: 0 0 10px #000000; z-index: 10; font-weight: bold; }
@@ -26,9 +67,34 @@
 </head>
 <body>
     <div id="ui">LEVEL: 11<br>STATUS: SHADOW MONARCH<br>LOCATION: FROZEN PEAK<br><span id="objective" style="color: #ff3333;">OBJECTIVE: SURVIVE THE HORDE (0/15)</span></div>
+    
     <div class="status-container">
+    	<br>
         <div class="bar-bg"><div id="hp-bar"></div></div>
         <div class="bar-bg"><div id="mp-bar"></div></div>
+    </div>
+    
+    <div id="loading-screen">
+        <div id="loading-text">LOADING ASSETS... 0%</div>
+        <div id="loading-bar-container"><div id="loading-bar"></div></div>
+    </div>
+    
+    <div id="subtitle" style="position: absolute; top: 30%; width: 100%; text-align: center; color: #ffaa00; font-family: monospace; font-size: 16px; font-weight: bold; text-shadow: 2px 2px 4px #000; display: none; z-index: 100; padding: 0 20px; box-sizing: border-box;"></div>
+    <div id="heal-popup" style="position: absolute; top: 25%; width: 100%; text-align: center; color: #44ff44; font-family: monospace; font-size: 18px; font-weight: bold; text-shadow: 2px 2px 4px #000; display: none; z-index: 100;">find green hearts to heal</div>
+
+    <div id="death-screen" class="screen-overlay" style="display: none;">
+        <div style="color: #ff0000; font-size: 40px; text-shadow: 0 0 20px #ff0000;">YOU DIED</div>
+        <div class="menu-btn" onclick="location.reload()">REPLAY</div>
+    </div>
+
+    <div id="win-screen" class="screen-overlay" style="display: none;">
+        <div style="color: #00ffff; font-size: 40px; text-shadow: 0 0 20px #00ffff;">GATE CLEARED</div>
+        <div class="menu-btn" onclick="alert('Proceeding to Level 12...')">GO TO NEXT LEVEL</div>
+    </div>
+
+    <div id="zoom-container">
+        <div id="zoom-label">ZOOM</div>
+        <input type="range" id="zoom-slider" orient="vertical" min="30" max="90" value="65">
     </div>
 
     <div id="joystick-zone"></div>
@@ -44,6 +110,24 @@
 
     <script type="module">
         import * as THREE from 'three';
+        
+        // --- LOADING MANAGER ---
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingText = document.getElementById('loading-text');
+
+        THREE.DefaultLoadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
+            const progress = (itemsLoaded / itemsTotal) * 100;
+            loadingBar.style.width = progress + '%';
+            loadingText.innerText = `LOADING ASSETS... ${Math.floor(progress)}%`;
+        };
+
+        THREE.DefaultLoadingManager.onLoad = function() {
+            loadingScreen.style.opacity = '0';
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+            }, 500); 
+        };
 
         // --- GLOBAL ARRAYS & STATE ---
         const floorColliders = []; 
@@ -51,6 +135,7 @@
         const enemies = []; 
         const activeProjectiles = [];
         const enemyProjectiles = []; 
+        const healthPickups = []; // Array for our green hearts
         let lockedEnemy = null; 
         
         // Phase Logic
@@ -59,11 +144,15 @@
         let orcsSpawnedTotal = 0;
         const TARGET_ORC_KILLS = 15;
         let phaseTwoStarted = false;
-        let playerHP = 100;
+        let gameWon = false;
 
         let moveData = { x: 0, y: 0 };
         let velocityY = 0;
         let isJumping = false;
+        let currentZoom = 55; 
+        const MIN_ZOOM = 30;  
+        const MAX_ZOOM = 90;  
+
         let cameraAngle = 0;
         let lastAimDir = new THREE.Vector3(1, 0, 0);
         let isSwiping = false;
@@ -133,83 +222,243 @@
         const targetMarker = new THREE.Mesh(new THREE.OctahedronGeometry(1.5), targetMarkerMat);
         targetMarker.visible = false;
         scene.add(targetMarker);
+        
+        // --- AUDIO SETUP ---
+        const sfxJinwooWalk = new Audio('city_walk.mp3'); 
+        sfxJinwooWalk.loop = true; sfxJinwooWalk.volume = 0.5;
 
-        // --- ENVIRONMENT GENERATION ---
-        const groundGeo = new THREE.CylinderGeometry(500, 550, 40, 64);
-        const groundMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0.1 });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.position.y = -20; 
-        scene.add(ground);
-        floorColliders.push(ground);
+        const sfxOrcWalk = new Audio('orc_walk.mp3'); 
+        sfxOrcWalk.loop = true; sfxOrcWalk.volume = 0.4;
 
-        const rockGeo = new THREE.DodecahedronGeometry(1);
-        const rockMat = new THREE.MeshStandardMaterial({ color: 0x667788, roughness: 0.9 }); 
-        for (let i = 0; i < 50; i++) {
-            const rock = new THREE.Mesh(rockGeo, rockMat);
-            const scale = 2 + Math.random() * 8;
-            rock.scale.set(scale, scale, scale);
-            let r = 40 + Math.random() * 410;
-            const theta = Math.random() * Math.PI * 2;
-            rock.position.set(r * Math.cos(theta), scale * 0.5, r * Math.sin(theta));
-            rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-            scene.add(rock);
-            obstacles.push({ mesh: rock, radius: scale * 0.7 }); 
+        const sfxOrcKilled = new Audio('orc_killed.mp3'); sfxOrcKilled.volume = 0.8;
+        const sfxSlash = new Audio('slash.mp3'); sfxSlash.volume = 0.8;
+        const sfxDagger = new Audio('dagger.wav'); sfxDagger.volume = 0.8;
+        const sfxGameInfo = new Audio('game_info.mp3'); sfxGameInfo.volume = 1.0;
+        
+        const sfxElfAttack = new Audio('elf_attack.flac'); sfxElfAttack.volume = 0.7;
+        const sfxElfDeath = new Audio('elf_death.wav'); sfxElfDeath.volume = 0.8;
+
+        document.body.addEventListener('touchstart', function unlockAudio() {
+            sfxJinwooWalk.play().then(() => { sfxJinwooWalk.pause(); sfxJinwooWalk.currentTime = 0; }).catch(()=>{});
+            document.body.removeEventListener('touchstart', unlockAudio);
+        }, { once: true });
+        
+        let readyForPhaseTwo = false;
+        sfxGameInfo.addEventListener('ended', () => {
+            readyForPhaseTwo = true;
+            document.getElementById('subtitle').style.display = 'none'; 
+        });
+        
+        // --- PLAYER HEALTH SYSTEM ---
+        let playerHP = 100;
+        const maxPlayerHP = 100;
+        let isInvulnerable = false;
+        let hasSeenHealMsg = false;
+
+        function playerTakeDamage(damageAmount) {
+            if (isInvulnerable || playerHP <= 0 || currentState === 'DEAD') return;
+
+            playerHP -= damageAmount;
+            isInvulnerable = true; 
+
+            player.material.color.setHex(0xff0000);
+            setTimeout(() => { if (player) player.material.color.setHex(0xffffff); }, 200);
+
+            if (!hasSeenHealMsg && playerHP > 0) {
+                hasSeenHealMsg = true;
+                const popup = document.getElementById('heal-popup');
+                popup.style.display = 'block';
+                setTimeout(() => { popup.style.display = 'none'; }, 4000); 
+            }
+
+            const hpPercent = Math.max(0, (playerHP / maxPlayerHP) * 100) + '%';
+            const hpBar = document.getElementById('hp-bar');
+            if (hpBar) hpBar.style.width = hpPercent;
+
+            if (playerHP <= 0) {
+                document.getElementById('objective').innerHTML = "SYSTEM MESSAGE: PLAYER DEAD";
+                document.getElementById('objective').style.color = "#ff0000";
+                
+                player.rotation.z = Math.PI / 2; 
+                player.position.y = 2; 
+                currentState = 'DEAD';
+                
+                setTimeout(() => {
+                    document.getElementById('death-screen').style.display = 'flex';
+                }, 1000);
+            }
+
+            setTimeout(() => { isInvulnerable = false; }, 1000);
         }
 
-        const treeCount = 60;
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2d1a11, roughness: 1.0 }); 
-        const leavesMat = new THREE.MeshStandardMaterial({ color: 0xd4f0ff, roughness: 0.6, metalness: 0.2, flatShading: true });
-        for (let i = 0; i < treeCount; i++) {
-            const treeGroup = new THREE.Group();
-            const trunkPath = new THREE.CatmullRomCurve3([
-                new THREE.Vector3(0, 0, 0),
-                new THREE.Vector3((Math.random() - 0.5) * 4, 12, (Math.random() - 0.5) * 4),
-                new THREE.Vector3((Math.random() - 0.5) * 8, 25, (Math.random() - 0.5) * 8)
-            ]);
-            const trunkGeo = new THREE.TubeGeometry(trunkPath, 8, 1.5 + Math.random() * 0.5, 8, false);
-            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-            treeGroup.add(trunk);
-
-            for (let b = 0; b < 10 + Math.floor(Math.random() * 6); b++) {
-                const heightPercent = 0.3 + (Math.random() * 0.7); 
-                const branchStart = trunkPath.getPointAt(heightPercent);
+        // --- SMART SPAWN LOGIC ---
+        function getValidSpawn(baseX, baseZ, minRadius, maxRadius) {
+            const enemyRadius = 3.0; 
+            for (let attempts = 0; attempts < 20; attempts++) {
                 const angle = Math.random() * Math.PI * 2;
-                const upwardTilt = 0.5 + Math.random(); 
-                const length = 5 + Math.random() * 6;
-                const branchEnd = new THREE.Vector3(branchStart.x + Math.cos(angle) * length, branchStart.y + upwardTilt * length, branchStart.z + Math.sin(angle) * length);
-                const branchGeo = new THREE.TubeGeometry(new THREE.LineCurve3(branchStart, branchEnd), 2, 0.3 + Math.random() * 0.3, 5, false);
-                const branch = new THREE.Mesh(branchGeo, trunkMat);
-                treeGroup.add(branch);
+                const r = minRadius + Math.random() * (maxRadius - minRadius);
+                const testX = baseX + Math.cos(angle) * r;
+                const testZ = baseZ + Math.sin(angle) * r;
                 
-                for (let l = 0; l < 2 + Math.floor(Math.random() * 3); l++) {
-                    const leaf = new THREE.Mesh(new THREE.ConeGeometry(3, 7, 3), leavesMat);
-                    leaf.position.set(branchEnd.x + (Math.random() - 0.5) * 4, branchEnd.y + (Math.random() - 0.5) * 4, branchEnd.z + (Math.random() - 0.5) * 4);
-                    leaf.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-                    treeGroup.add(leaf);
+                let isInsideBuilding = false;
+                
+                for (let i = 0; i < obstacles.length; i++) {
+                    const obs = obstacles[i];
+                    const dist = Math.sqrt(Math.pow(testX - obs.mesh.position.x, 2) + Math.pow(testZ - obs.mesh.position.z, 2));
+                    if (dist < (obs.radius + enemyRadius)) {
+                        isInsideBuilding = true;
+                        break; 
+                    }
+                }
+                if (!isInsideBuilding) { return { x: testX, z: testZ }; }
+            }
+            return { x: baseX, z: baseZ }; 
+        }
+
+        // --- ENVIRONMENT GENERATION (RETRO WINTER CITY) ---
+        const groundGeo = new THREE.BoxGeometry(1000, 40, 1000);
+        const snowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 });
+        const ground = new THREE.Mesh(groundGeo, snowMat);
+        ground.position.y = -20.2; 
+        scene.add(ground);
+        floorColliders.push(ground); 
+
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x333333, flatShading: true, roughness: 0.9 });
+        const lineMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, flatShading: true }); 
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0x4f7942, flatShading: true }); 
+        const buildingColors = [0x3A506B, 0x7A444A, 0x4B6E5B, 0x8C7A6B, 0x2d3748];
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, flatShading: true }); 
+        const windowMat = new THREE.MeshStandardMaterial({ color: 0xffffaa, emissive: 0xffffaa, emissiveIntensity: 0.6, flatShading: true });
+
+        const roadWidth = 24;
+        for (let i = -3; i <= 3; i++) {
+            const hRoad = new THREE.Mesh(new THREE.BoxGeometry(1000, 40, roadWidth), roadMat);
+            hRoad.position.set(0, -20.0, i * 100);
+            scene.add(hRoad);
+            
+            const vRoad = new THREE.Mesh(new THREE.BoxGeometry(roadWidth, 40, 1000), roadMat);
+            vRoad.position.set(i * 100, -20.0, 0);
+            scene.add(vRoad);
+
+            for (let j = -480; j < 500; j += 20) {
+                if (Math.abs(j % 100) < 15) continue;
+                const hLine = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 1.5), lineMat);
+                hLine.position.set(j, -0.2, i * 100);
+                scene.add(hLine);
+                const vLine = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 10), lineMat);
+                vLine.position.set(i * 100, -0.2, j);
+                scene.add(vLine);
+            }
+        }
+
+        const cityGroup = new THREE.Group();
+        scene.add(cityGroup);
+
+        for (let x = -3; x <= 2; x++) {
+            for (let z = -3; z <= 2; z++) {
+                if (x === 0 && z === 0) continue; 
+
+                const bldgsInBlock = 2 + Math.floor(Math.random() * 3);
+                
+                for(let b = 0; b < bldgsInBlock; b++) {
+                    const bldgGroup = new THREE.Group();
+                    
+                    const isTall = Math.random() > 0.5;
+                    const w = 16 + Math.random() * 8;
+                    const h = isTall ? 50 + Math.random() * 30 : 20 + Math.random() * 15;
+                    const d = 16 + Math.random() * 8;
+                    
+                    const bldgColor = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+                    const bMat = new THREE.MeshStandardMaterial({ color: bldgColor, flatShading: true });
+
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bMat);
+                    body.position.y = h / 2;
+                    bldgGroup.add(body);
+
+                    const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 2, 2, d + 2), snowMat);
+                    roof.position.y = h + 1;
+                    bldgGroup.add(roof);
+
+                    const door = new THREE.Mesh(new THREE.BoxGeometry(4, 8, d + 0.5), doorMat);
+                    door.position.y = 4;
+                    bldgGroup.add(door);
+
+                    const rows = Math.floor(h / 12);
+                    for (let rw = 1; rw < rows; rw++) {
+                        if (Math.random() > 0.3) { 
+                            const win = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, 4, 4), windowMat);
+                            win.position.y = rw * 12;
+                            win.position.z = (Math.random() > 0.5 ? 2 : -2); 
+                            bldgGroup.add(win);
+                        }
+                    }
+
+                    const bushCount = 4 + Math.floor(Math.random() * 5);
+                    for (let bush = 0; bush < bushCount; bush++) {
+                        const bushSize = 2 + Math.random() * 2.5;
+                        const bMesh = new THREE.Mesh(new THREE.BoxGeometry(bushSize, bushSize, bushSize), grassMat);
+                        
+                        const isSideX = Math.random() > 0.5;
+                        const offsetX = isSideX ? (Math.random() > 0.5 ? 1 : -1) * (w/2 + 1) : (Math.random() - 0.5) * w;
+                        const offsetZ = !isSideX ? (Math.random() > 0.5 ? 1 : -1) * (d/2 + 1) : (Math.random() - 0.5) * d;
+                        
+                        bMesh.position.set(offsetX, bushSize / 2, offsetZ);
+                        bldgGroup.add(bMesh);
+
+                        const bushSnow = new THREE.Mesh(new THREE.BoxGeometry(bushSize + 0.2, 0.5, bushSize + 0.2), snowMat);
+                        bushSnow.position.set(offsetX, bushSize + 0.25, offsetZ);
+                        bldgGroup.add(bushSnow);
+                    }
+
+                    const blockCenterX = (x * 100) + 50;
+                    const blockCenterZ = (z * 100) + 50;
+                    
+                    bldgGroup.position.set(
+                        blockCenterX + (Math.random() - 0.5) * 40,
+                        0,
+                        blockCenterZ + (Math.random() - 0.5) * 40
+                    );
+                    bldgGroup.rotation.y = (Math.floor(Math.random() * 4) * Math.PI) / 2;
+
+                    cityGroup.add(bldgGroup);
+                    
+                    const bldgRadius = Math.max(w, d) / 2 + 2; 
+                    obstacles.push({ mesh: bldgGroup, radius: bldgRadius });
                 }
             }
-            let tR = 50 + Math.random() * 400;
-            const tTheta = Math.random() * Math.PI * 2;
-            treeGroup.position.set(tR * Math.cos(tTheta), 0, tR * Math.sin(tTheta));
-            treeGroup.rotation.y = Math.random() * Math.PI * 2;
-            treeGroup.scale.setScalar(0.7 + Math.random() * 0.5);
-            scene.add(treeGroup);
-            obstacles.push({ mesh: treeGroup, radius: 2.5 });
         }
 
+        // --- HEALTH PICKUPS (GREEN HEARTS) ---
+        const heartGeo = new THREE.OctahedronGeometry(2.5); 
+        const heartMat = new THREE.MeshStandardMaterial({ 
+            color: 0x44ff44, 
+            emissive: 0x22ff22, 
+            emissiveIntensity: 0.8, 
+            flatShading: true 
+        });
+        
+        for(let i = 0; i < 20; i++) {
+            const heart = new THREE.Mesh(heartGeo, heartMat);
+            const safeSpot = getValidSpawn(0, 0, 10, 100); 
+            heart.position.set(safeSpot.x, 4, safeSpot.z); 
+            scene.add(heart);
+            healthPickups.push(heart);
+        }
+
+        // 4. Chunky Snow Particles
         const snowGeo = new THREE.BufferGeometry();
-        const snowCount = 1500;
+        const snowCount = 1000;
         const snowPos = new Float32Array(snowCount * 3);
         const snowSpeeds = new Float32Array(snowCount);
         for (let i = 0; i < snowCount; i++) {
-            snowPos[i * 3] = (Math.random() - 0.5) * 200;    
+            snowPos[i * 3] = (Math.random() - 0.5) * 300;    
             snowPos[i * 3 + 1] = Math.random() * 100;         
-            snowPos[i * 3 + 2] = (Math.random() - 0.5) * 200; 
+            snowPos[i * 3 + 2] = (Math.random() - 0.5) * 300; 
             snowSpeeds[i] = 0.2 + Math.random() * 0.5;        
         }
         snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
-        const snowMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.0, transparent: true, opacity: 0.8 });
-        const snowParticles = new THREE.Points(snowGeo, snowMat);
+        const snowParticleMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.0, transparent: true, opacity: 0.8 });
+        const snowParticles = new THREE.Points(snowGeo, snowParticleMat);
         scene.add(snowParticles);
 
         // --- COMPASS ARROW ---
@@ -322,6 +571,18 @@
             scene.add(flake);
             enemyProjectiles.push(flake);
         }
+        
+        // --- ZOOM SLIDER LOGIC ---
+        const zoomSlider = document.getElementById('zoom-slider');
+        zoomSlider.addEventListener('input', (e) => {
+            // Slider goes 30 (bottom) to 90 (top).
+            // Pushing UP (higher value) zooms IN (smaller camera distance).
+            currentZoom = 120 - parseInt(e.target.value);
+        });
+
+        // Prevent dragging the slider from swiping the camera
+        zoomSlider.addEventListener('touchstart', (e) => { e.stopPropagation(); }, { passive: false });
+        zoomSlider.addEventListener('touchmove', (e) => { e.stopPropagation(); }, { passive: false });
 
         // --- CONTROLS ---
         document.addEventListener('touchstart', (e) => {
@@ -341,7 +602,7 @@
         nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '80px', bottom: '80px' } })
             .on('move', (e, d) => { 
                 moveData = d.vector; 
-                if (currentState !== 'ATTACK' && currentState !== 'THROW') {
+                if (currentState !== 'ATTACK' && currentState !== 'THROW' && currentState !== 'DEAD') {
                     if (currentState !== 'WALK') { currentState = 'WALK'; player.material.map = texWalk; frame = 0; }
                     facingRight = moveData.x > 0;
                 }
@@ -351,16 +612,58 @@
                 if (currentState === 'WALK') { currentState = 'IDLE'; player.material.map = texIdle; frame = 0; }
             });
 
-        document.getElementById('jump-btn').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isJumping) { velocityY = jumpForce; isJumping = true; } }, { passive: false });
+        document.getElementById('jump-btn').addEventListener('touchstart', (e) => { e.preventDefault(); if(!isJumping && currentState !== 'DEAD') { velocityY = jumpForce; isJumping = true; } }, { passive: false });
         
         document.getElementById('attack-btn').addEventListener('touchstart', (e) => { 
             e.preventDefault();
-            if (currentState !== 'ATTACK' && currentState !== 'THROW') { currentState = 'ATTACK'; player.material.map = texAttack; frame = 0; }
+            if (currentState !== 'ATTACK' && currentState !== 'THROW' && currentState !== 'DEAD') { 
+                currentState = 'ATTACK'; 
+                player.material.map = texAttack; 
+                frame = 0; 
+                
+                sfxSlash.currentTime = 0; 
+                sfxSlash.play().catch(e => {});
+
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    if (enemy.userData.state === 'dying' || enemy.userData.state === 'spawning') continue;
+                    
+                    if (player.position.distanceTo(enemy.position) < 15) {
+                        enemy.userData.hp -= 50; 
+                        
+                        enemy.material.color.setHex(0xff0000); 
+                        setTimeout(() => { if(enemy && enemy.material) enemy.material.color.setHex(0xffffff); }, 100);
+
+                        if (enemy.userData.hp <= 0) {
+                            enemy.userData.state = 'dying';
+                            enemy.userData.frame = 0;
+                            enemy.material.map = enemy.userData.textures.death; 
+                            
+                            if (enemy.userData.type === 'orc') {
+                                sfxOrcKilled.currentTime = 0;
+                                sfxOrcKilled.play().catch(e=>{});
+                            }
+                            
+                            const obsIdx = obstacles.findIndex(o => o.mesh === enemy);
+                            if (obsIdx > -1) obstacles.splice(obsIdx, 1);
+                        }
+                    }
+                }
+            }
         });
 
         document.getElementById('dagger-btn').addEventListener('touchstart', (e) => { 
             e.preventDefault();
-            if (currentState !== 'ATTACK' && currentState !== 'THROW') { currentState = 'THROW'; player.material.map = texThrow; frame = 0; spawnDagger(); }
+            if (currentState !== 'ATTACK' && currentState !== 'THROW' && currentState !== 'DEAD') { 
+                currentState = 'THROW'; 
+                player.material.map = texThrow; 
+                frame = 0; 
+                
+                sfxDagger.currentTime = 0; 
+                sfxDagger.play().catch(e => {});
+                
+                spawnDagger(); 
+            }
         });
 
         document.getElementById('target-btn').addEventListener('touchstart', (e) => {
@@ -386,23 +689,38 @@
             if (gamePhase === 1) {
                 let activeOrcs = enemies.filter(e => e.userData.type === 'orc' && e.userData.state !== 'dying').length;
                 if (activeOrcs < 3 && orcsSpawnedTotal < TARGET_ORC_KILLS) {
-                    const angle = Math.random() * Math.PI * 2;
-                    spawnEnemy('orc', player.position.x + Math.cos(angle) * 70, player.position.z + Math.sin(angle) * 70);
+                    const safeSpot = getValidSpawn(player.position.x, player.position.z, 60, 80);
+                    spawnEnemy('orc', safeSpot.x, safeSpot.z);
                     orcsSpawnedTotal++;
                 }
                 
                 if (orcsKilled >= TARGET_ORC_KILLS) {
+                    gamePhase = 1.5; 
+                    
+                    document.getElementById('objective').innerHTML = "WARNING: UNKNOWN ENTITIES DETECTED";
+                    document.getElementById('objective').style.color = "#ffaa00"; 
+                    
+                    const subtitle = document.getElementById('subtitle');
+                    subtitle.innerText = "Now ready to fight with Ice elf princess, they may hide so find them and ready your weapons.";
+                    subtitle.style.display = 'block';
+
+                    sfxGameInfo.currentTime = 0;
+                    sfxGameInfo.play().catch(e=>{});
+                }
+            } 
+            else if (gamePhase === 1.5) {
+                if (readyForPhaseTwo) {
                     gamePhase = 2;
                     document.getElementById('objective').innerHTML = "OBJECTIVE: HUNT THE PHANTOMS";
                     document.getElementById('objective').style.color = "#00ffff"; 
                 }
-            } else if (gamePhase === 2) {
+            } 
+            else if (gamePhase === 2) {
                 if (!phaseTwoStarted) {
                     arrowGroup.visible = true;
                     for(let i = 0; i < 5; i++) {
-                        const angle = Math.random() * Math.PI * 2;
-                        const r = 100 + Math.random() * 250;
-                        spawnEnemy('elf', player.position.x + Math.cos(angle) * r, player.position.z + Math.sin(angle) * r);
+                        const safeSpot = getValidSpawn(player.position.x, player.position.z, 100, 250);
+                        spawnEnemy('elf', safeSpot.x, safeSpot.z);
                     }
                     phaseTwoStarted = true;
                 }
@@ -418,10 +736,32 @@
                 
                 if (closestElf) {
                     arrowGroup.lookAt(closestElf.position.x, arrowGroup.position.y, closestElf.position.z);
-                } else {
+                } else if (!gameWon && phaseTwoStarted) {
+                    gameWon = true;
                     arrowGroup.visible = false;
                     document.getElementById('objective').innerHTML = "OBJECTIVE: GATE CLEARED";
                     document.getElementById('objective').style.color = "#00ff00"; 
+                    
+                    setTimeout(() => {
+                        document.getElementById('win-screen').style.display = 'flex';
+                    }, 1500);
+                }
+            }
+
+            // --- HEALTH PICKUP LOGIC (GREEN HEARTS) ---
+            for (let i = healthPickups.length - 1; i >= 0; i--) {
+                let heart = healthPickups[i];
+                heart.rotation.y += 0.05; 
+                heart.position.y += Math.sin(time * 5 + i) * 0.05; 
+                
+                if (player.position.distanceTo(heart.position) < 12 && playerHP > 0) {
+                    playerHP = Math.min(maxPlayerHP, playerHP + 25); 
+                    
+                    const hpBar = document.getElementById('hp-bar');
+                    if (hpBar) hpBar.style.width = (playerHP / maxPlayerHP * 100) + '%';
+                    
+                    scene.remove(heart);
+                    healthPickups.splice(i, 1);
                 }
             }
 
@@ -462,6 +802,7 @@
                             isMoving = true;
                         } else {
                             data.state = 'attacking';
+                            playerTakeDamage(15); 
                         }
                     } else if (data.type === 'elf') {
                         if (distToPlayer < 20) { 
@@ -476,6 +817,8 @@
                             data.state = 'attacking';
                             if (data.cooldown <= 0) {
                                 shootSnowflake(enemy.position, player.position);
+                                sfxElfAttack.currentTime = 0;
+                                sfxElfAttack.play().catch(e=>{});
                                 data.cooldown = 120; 
                             }
                         }
@@ -483,7 +826,6 @@
 
                     if (data.cooldown > 0) data.cooldown--;
 
-                    // NEW ENEMY COLLISION LOGIC
                     if (isMoving) {
                         let eSpeed = data.type === 'orc' ? 0.2 : 0.25;
                         let moveX = moveDir.x * eSpeed;
@@ -494,7 +836,7 @@
 
                         for (let k = 0; k < obstacles.length; k++) {
                             const obs = obstacles[k];
-                            if (obs.mesh === enemy) continue; // Don't collide with self
+                            if (obs.mesh === enemy) continue; 
 
                             if (Math.sqrt(Math.pow((enemy.position.x + moveX) - obs.mesh.position.x, 2) + Math.pow(enemy.position.z - obs.mesh.position.z, 2)) < (obs.radius + data.radius)) { 
                                 canMoveX = false; 
@@ -528,7 +870,6 @@
                 const row = Math.floor(data.frame / 2); 
                 enemy.material.map.offset.set(col * 0.5, 0.5 - (row * 0.5));
                 enemy.lookAt(camera.position);
-                
                 enemy.scale.x = data.facingRight ? -Math.abs(enemy.scale.x) : Math.abs(enemy.scale.x);
             }
 
@@ -543,7 +884,7 @@
             }
 
             // --- PLAYER MOVEMENT ---
-            if (Math.abs(moveData.x) > 0.1 || Math.abs(moveData.y) > 0.1) {
+            if ((Math.abs(moveData.x) > 0.1 || Math.abs(moveData.y) > 0.1) && currentState !== 'ATTACK' && currentState !== 'THROW' && currentState !== 'DEAD') {
                 const joyVec = new THREE.Vector2(moveData.x, moveData.y).normalize();
                 let moveX = (-Math.sin(cameraAngle) * joyVec.y + Math.cos(cameraAngle) * joyVec.x) * moveSpeed;
                 let moveZ = (-Math.cos(cameraAngle) * joyVec.y - Math.sin(cameraAngle) * joyVec.x) * moveSpeed;
@@ -559,11 +900,30 @@
 
                 if (canMoveX) player.position.x += moveX;
                 if (canMoveZ) player.position.z += moveZ;
-                if (currentState !== 'ATTACK' && currentState !== 'THROW') facingRight = (moveData.x > 0);
+                
+                const mapLimit = 490; 
+                player.position.x = Math.max(-mapLimit, Math.min(mapLimit, player.position.x));
+                player.position.z = Math.max(-mapLimit, Math.min(mapLimit, player.position.z));
+                
+                facingRight = (moveData.x > 0);
+            }
+            
+            // --- LOOPING SOUND MANAGEMENT ---
+            if ((Math.abs(moveData.x) > 0.1 || Math.abs(moveData.y) > 0.1) && currentState !== 'ATTACK' && currentState !== 'THROW' && currentState !== 'DEAD') {
+                if (sfxJinwooWalk.paused) sfxJinwooWalk.play().catch(e=>{});
+            } else {
+                if (!sfxJinwooWalk.paused) sfxJinwooWalk.pause();
+            }
+
+            const isAnyOrcChasing = enemies.some(e => e.userData.type === 'orc' && e.userData.state === 'chasing');
+            if (isAnyOrcChasing && currentState !== 'DEAD') {
+                if (sfxOrcWalk.paused) sfxOrcWalk.play().catch(e=>{});
+            } else {
+                if (!sfxOrcWalk.paused) sfxOrcWalk.pause();
             }
 
             // --- PLAYER ANIMATION ---
-            if (currentState !== 'IDLE') {
+            if (currentState !== 'IDLE' && currentState !== 'DEAD') {
                 frameTimer += animationSpeed;
                 if (frameTimer > 1) {
                     frameTimer = 0; frame++;
@@ -580,10 +940,10 @@
             const col = frame % 2; 
             const row = Math.floor(frame / 2); 
             player.material.map.offset.set(col * 0.5, 0.5 - (row * 0.5));
-            player.lookAt(camera.position);
+            if (currentState !== 'DEAD') player.lookAt(camera.position);
             player.scale.x = facingRight ? Math.abs(player.scale.x) : -Math.abs(player.scale.x);
 
-            // --- DAGGER PHYSICS (Player) ---
+            // --- DAGGER PHYSICS ---
             for (let i = activeProjectiles.length - 1; i >= 0; i--) {
                 const proj = activeProjectiles[i];
                 proj.position.add(proj.userData.velocity);
@@ -606,6 +966,14 @@
                             enemy.userData.frame = 0;
                             enemy.material.map = enemy.userData.textures.death; 
                             
+                            if (enemy.userData.type === 'orc') {
+                                sfxOrcKilled.currentTime = 0;
+                                sfxOrcKilled.play().catch(e=>{});
+                            } else if (enemy.userData.type === 'elf') {
+                                sfxElfDeath.currentTime = 0;
+                                sfxElfDeath.play().catch(e=>{});
+                            }
+                            
                             const obsIdx = obstacles.findIndex(o => o.mesh === enemy);
                             if (obsIdx > -1) obstacles.splice(obsIdx, 1);
                         }
@@ -615,17 +983,15 @@
                 if (destroyed || proj.position.distanceTo(player.position) > 150) { scene.remove(proj); activeProjectiles.splice(i, 1); }
             }
 
-            // --- SNOWFLAKE PHYSICS (Enemies) ---
+            // --- SNOWFLAKE PHYSICS ---
             for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
                 const flake = enemyProjectiles[i];
                 flake.position.add(flake.userData.velocity);
                 flake.lookAt(camera.position); 
-                
                 flake.rotation.z += 0.2;
                 
                 if (flake.position.distanceTo(player.position) < playerRadius + 1) {
-                    playerHP = Math.max(0, playerHP - 10);
-                    document.getElementById('hp-bar').style.width = playerHP + '%';
+                    playerTakeDamage(10); 
                     scene.remove(flake);
                     enemyProjectiles.splice(i, 1);
                 } else if (flake.position.distanceTo(player.position) > 150) {
@@ -639,7 +1005,11 @@
             player.position.y += velocityY;
             floorRay.set(new THREE.Vector3(player.position.x, player.position.y + 10, player.position.z), new THREE.Vector3(0, -1, 0));
             const groundHits = floorRay.intersectObjects(floorColliders); 
-            if (groundHits.length > 0 && groundHits[0].distance < (10 + playerHalfHeight + 2) && velocityY <= 0) { player.position.y = groundHits[0].point.y + playerHalfHeight; velocityY = 0; isJumping = false; }
+            if (groundHits.length > 0 && groundHits[0].distance < (10 + playerHalfHeight + 2) && velocityY <= 0 && currentState !== 'DEAD') { 
+                player.position.y = groundHits[0].point.y + playerHalfHeight; 
+                velocityY = 0; 
+                isJumping = false; 
+            }
 
             const positions = snowParticles.geometry.attributes.position.array;
             for (let i = 0; i < snowCount; i++) {
@@ -656,7 +1026,12 @@
         function animate() {
             requestAnimationFrame(animate);
             update();
-            cameraTarget.set(player.position.x + Math.sin(cameraAngle) * 55, player.position.y + 15, player.position.z + Math.cos(cameraAngle) * 55);
+            cameraTarget.set(
+                player.position.x + Math.sin(cameraAngle) * currentZoom, 
+                player.position.y + 15, 
+                player.position.z + Math.cos(cameraAngle) * currentZoom
+            );
+
             camera.position.lerp(cameraTarget, 0.15); 
             camera.lookAt(player.position.x, player.position.y + 5, player.position.z);
             renderer.render(scene, camera);

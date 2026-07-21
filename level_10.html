@@ -39,7 +39,7 @@
         h1 { margin: 0; font-size: 20px; letter-spacing: 3px; }
         p { margin: 5px 0 0 0; font-size: 13px; color: #ffaa88; font-weight: bold; }
         
-        /* Player Status Bars (Copied from your main game) */
+        /* Player Status Bars */
         .status-container { position: absolute; top: 20px; left: 20px; z-index: 10; width: 150px; }
         .bar-bg { width: 100%; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #444; margin-bottom: 5px; border-radius: 4px; overflow: hidden; }
         #hp-bar { width: 100%; height: 100%; background: linear-gradient(to right, #00ff00,  #008800); transition: width 0.3s; }
@@ -100,21 +100,20 @@
     <button id="fullscreen-btn">[&nbsp;&nbsp;]</button>
     
     <div id="loading-screen">
-    <div id="loading-text">LOADING ASSETS... 0%</div>
-    <div id="loading-bar-container"><div id="loading-bar"></div></div>
-</div>
+        <div id="loading-text">LOADING ASSETS... 0%</div>
+        <div id="loading-bar-container"><div id="loading-bar"></div></div>
+    </div>
 
-<div id="zoom-controls">
-    <div id="zoom-in" class="zoom-btn">+</div>
-    <div id="zoom-out" class="zoom-btn">-</div>
-</div>
-
+    <div id="zoom-controls">
+        <div id="zoom-in" class="zoom-btn">+</div>
+        <div id="zoom-out" class="zoom-btn">-</div>
+    </div>
 
     <div id="joystick-zone"></div>
-        <div id="end-screen">
+    <div id="end-screen">
         <h1 id="end-title">YOU HAVE DIED</h1>
         <p id="end-msg">The Monarch's Ritual has failed.</p>
-        <button id="restart-btn" onclick="location.reload()">TRY AGAIN</button>
+        <button id="restart-btn">TRY AGAIN</button>
     </div>
     
     <button id="attack-btn">SLASH</button>
@@ -129,44 +128,40 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         
         // --- LOADING MANAGER ---
-const loadingScreen = document.getElementById('loading-screen');
-const loadingBar = document.getElementById('loading-bar');
-const loadingText = document.getElementById('loading-text');
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingText = document.getElementById('loading-text');
 
-THREE.DefaultLoadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
-    const progress = (itemsLoaded / itemsTotal) * 100;
-    loadingBar.style.width = progress + '%';
-    loadingText.innerText = `LOADING ASSETS... ${Math.floor(progress)}%`;
-};
+        THREE.DefaultLoadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
+            const progress = (itemsLoaded / itemsTotal) * 100;
+            loadingBar.style.width = progress + '%';
+            loadingText.innerText = `LOADING ASSETS... ${Math.floor(progress)}%`;
+        };
 
-THREE.DefaultLoadingManager.onLoad = function() {
-    // When 100% is reached, fade out the black screen
-    loadingScreen.style.opacity = '0';
-    setTimeout(() => {
-        loadingScreen.style.display = 'none';
-    }, 500); // Wait for the fade CSS to finish before removing it
-};
-
+        THREE.DefaultLoadingManager.onLoad = function() {
+            loadingScreen.style.opacity = '0';
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+            }, 500); 
+        };
 
         // --- FULLSCREEN LOGIC ---
         const fullscreenBtn = document.getElementById('fullscreen-btn');
         fullscreenBtn.addEventListener('click', () => {
             if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-                // Enter fullscreen
                 if (document.documentElement.requestFullscreen) {
                     document.documentElement.requestFullscreen();
-                } else if (document.documentElement.webkitRequestFullscreen) { /* Safari */
+                } else if (document.documentElement.webkitRequestFullscreen) { 
                     document.documentElement.webkitRequestFullscreen();
                 }
-                fullscreenBtn.innerText = "><"; // Change icon to exit
+                fullscreenBtn.innerText = "><"; 
             } else {
-                // Exit fullscreen
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) { /* Safari */
+                } else if (document.webkitExitFullscreen) { 
                     document.webkitExitFullscreen();
                 }
-                fullscreenBtn.innerText = "[  ]"; // Change icon to enter
+                fullscreenBtn.innerText = "[  ]"; 
             }
         });
 
@@ -215,13 +210,17 @@ THREE.DefaultLoadingManager.onLoad = function() {
                 restartBtn.style.borderColor = "#00ff00";
                 restartBtn.style.color = "#00ff00";
                 restartBtn.style.boxShadow = "0 0 15px rgba(0, 255, 0, 0.4)";
-                restartBtn.innerText = "ARISE (PLAY AGAIN)";
+                restartBtn.innerText = "PLAY LEVEL 11";
+                // Reroute to Level 11 on click
+                restartBtn.onclick = () => window.location.href = 'level_11.html';
+            } else {
+                // Reload Level 10 on death
+                restartBtn.onclick = () => location.reload();
             }
             
             endScreen.style.display = 'flex';
         }
                 
-
         // 1. SCENE & LIGHTING SETUP
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x050102); 
@@ -366,28 +365,26 @@ THREE.DefaultLoadingManager.onLoad = function() {
             }
         });
         
-        
         // 5. CONTROLS SETUP
         let moveData = { x: 0, y: 0 };
-        let currentZoom = 55; // Default camera distance
-const MIN_ZOOM = 30;  // Closest it can get
-const MAX_ZOOM = 90;  // Furthest it can go
+        let currentZoom = 55; 
+        const MIN_ZOOM = 30;  
+        const MAX_ZOOM = 90;  
 
         nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '80px', bottom: '80px' } })
             .on('move', (e, d) => { moveData = d.vector; })
             .on('end', () => moveData = { x: 0, y: 0 });
             
-            // --- ZOOM BUTTON LOGIC ---
-document.getElementById('zoom-in').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    currentZoom = Math.max(MIN_ZOOM, currentZoom - 10);
-});
+        // --- ZOOM BUTTON LOGIC ---
+        document.getElementById('zoom-in').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            currentZoom = Math.max(MIN_ZOOM, currentZoom - 10);
+        });
 
-document.getElementById('zoom-out').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    currentZoom = Math.min(MAX_ZOOM, currentZoom + 10);
-});
-
+        document.getElementById('zoom-out').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            currentZoom = Math.min(MAX_ZOOM, currentZoom + 10);
+        });
 
         document.getElementById('attack-btn').addEventListener('touchstart', (e) => {
             e.preventDefault();
@@ -419,21 +416,18 @@ document.getElementById('zoom-out').addEventListener('touchstart', (e) => {
         function firePoison() {
             if (!snakeBoss.children.length) return;
             
-            // --- NEW: DYNAMIC CLUSTER BOMBS BASED ON BOSS HEALTH ---
             let bombsToDrop = 1;
-            if (snakeHP <= 70) bombsToDrop = 2; // Phase 2: Double drop
-            if (snakeHP <= 40) bombsToDrop = 3; // Phase 3: Triple drop
-            if (snakeHP <= 15) bombsToDrop = 5; // Phase 4: Bullet Hell Mode!
+            if (snakeHP <= 70) bombsToDrop = 2; 
+            if (snakeHP <= 40) bombsToDrop = 3; 
+            if (snakeHP <= 15) bombsToDrop = 5; 
 
             for (let i = 0; i < bombsToDrop; i++) {
                 const poisonGeo = new THREE.PlaneGeometry(5, 5);
                 const poison = new THREE.Mesh(poisonGeo, poisonMat);
                 
-                // Add spread so they don't spawn exactly on top of each other
                 const offsetX = (Math.random() - 0.5) * 30;
                 const offsetZ = (Math.random() - 0.5) * 30;
 
-                // --- NEW: Spawning from high up in the sky (Y = 100) ---
                 poison.position.set(snakeBoss.position.x + offsetX, snakeBoss.position.y + 100, snakeBoss.position.z + offsetZ);
                 
                 const r = coilRadius * Math.random() * 0.9; 
@@ -520,7 +514,6 @@ document.getElementById('zoom-out').addEventListener('touchstart', (e) => {
                 }
             }
 
-            // CLEANED UP: Only one projectile and collision check loop!
             for (let i = jinwooProjectiles.length - 1; i >= 0; i--) {
                 let slash = jinwooProjectiles[i];
                 slash.position.addScaledVector(slash.userData.velocity, delta);
@@ -532,21 +525,20 @@ document.getElementById('zoom-out').addEventListener('touchstart', (e) => {
                         scene.remove(slash);
                         jinwooProjectiles.splice(i, 1);
                         
-            if (snakeHP > 0 && !isSnakeDead) {
-                snakeHP -= 1; 
-                
-                if (snakeHP <= 0) {
-                    snakeHP = 0;
-                    isSnakeDead = true;
-                    
-         // Enable transparency so the snake can fade away
-                    snakeBoss.traverse((child) => {
-                        if (child.isMesh && child.material) {
-                            child.material.transparent = true;
-                            child.material.needsUpdate = true;
-                        }
-                    });
-                }                                       
+                        if (snakeHP > 0 && !isSnakeDead) {
+                            snakeHP -= 1; 
+                            
+                            if (snakeHP <= 0) {
+                                snakeHP = 0;
+                                isSnakeDead = true;
+                                
+                                snakeBoss.traverse((child) => {
+                                    if (child.isMesh && child.material) {
+                                        child.material.transparent = true;
+                                        child.material.needsUpdate = true;
+                                    }
+                                });
+                            }                                       
                             
                             bossDamageSFX.currentTime = 0;
                             bossDamageSFX.play().catch(e => {});
@@ -632,7 +624,7 @@ document.getElementById('zoom-out').addEventListener('touchstart', (e) => {
 
             // --- SNAKE DEATH FADE ANIMATION ---
             if (isSnakeDead && snakeFadeOpacity > 0) {
-                snakeFadeOpacity -= delta * 0.5; // Fades out slowly over 2 seconds
+                snakeFadeOpacity -= delta * 0.5; 
                 
                 if (snakeFadeOpacity <= 0) {
                     snakeFadeOpacity = 0;
